@@ -15,7 +15,7 @@ pyramid.includes =
     pyramid_debugtoolbar
 
 ##############################################################
-# the full path to the parent of the  phylesystem-# git dir(s)
+# the full path to the parent of the  phylesystem-# git dir(s) can be found
 repo_parent   = REPO_PAR
 
 #################################################
