@@ -1,15 +1,24 @@
-from pyramid.httpexceptions import HTTPNotFound, HTTPBadRequest
+from pyramid.httpexceptions import HTTPNotFound, HTTPBadRequest, HTTPConflict
 from pyramid.view import view_config
 from pyramid.url import route_url
+from peyotl.phylesystem.git_workflows import GitWorkflowError, \
+                                             merge_from_master
 from peyotl.nexson_syntax import get_empty_nexson, \
                                  PhyloSchema, \
                                  BY_ID_HONEY_BADGERFISH
 from phylesystem_api.util import _err_body, \
                                  _raise_HTTP_from_msg, \
                                  authenticate, \
-                                 new_nexson_with_crossref_metadata
+                                 new_nexson_with_crossref_metadata, \
+                                 OTISearch
+import traceback
 import logging
 import anyjson
+import time
+import os
+import urllib2
+import sys
+
 _LOG = logging.getLogger(__name__)
 try:
     from open_tree_tasks import call_http_json
@@ -42,11 +51,6 @@ def unmerged_branches(request):
     bl.sort()
     return bl
 
-@view_config(route_name='push_id', renderer='json')
-@view_config(route_name='push', renderer='json')
-def push_to_github(request):
-    return 'ha'
-
 @view_config(route_name='external_url', renderer='json')
 def external_url(request):
     phylesystem = request.registry.settings['phylesystem']
@@ -65,11 +69,9 @@ def repo_nexson_format(request):
     return {'description': "The nexml2json property reports the version of the NexSON that is used in the document store. Using other forms of NexSON with the API is allowed, but may be slower.",
             'nexml2json': phylesystem.repo_nexml2json}
 
-
-
 @view_config(route_name='get_sub', renderer='json', request_method='GET')
 @view_config(route_name='get_sub_id', renderer='json', request_method='GET')
-@view_config(route_name='get_study', renderer='json', request_method='GET')
+@view_config(route_name='get_study_id', renderer='json', request_method='GET')
 def get_study(request):
     "OpenTree API methods relating to reading"
     valid_resources = ('study', )
@@ -139,8 +141,7 @@ def get_study(request):
             version_history = phylesystem.get_version_history_for_study_id(study_id)
     except:
         _LOG.exception('GET failed')
-        e = sys.exc_info()[0]
-        _raise_HTTP_from_msg(e)
+        _raise_HTTP_from_msg(traceback.format_exc())
     if out_schema.format_str == 'nexson' and out_schema.version == phylesystem.repo_nexml2json:
         result_data = study_nexson
     else:
@@ -328,6 +329,246 @@ def put_study(request):
     if (mn is not None) and (not mn):
         _deferred_push_to_gh_call(request, study_id, **request.params)
     return blob
+
+@view_config(route_name='delete_study_id', renderer='json', request_method='DELETE')
+def delete_study(request):
+    "Open Tree API methods relating to deleting existing resources"
+    # support JSONP request from another domain
+    parent_sha = request.params.get('starting_commit_SHA')
+    if parent_sha is None:
+        _raise_HTTP_from_msg('Expecting a "starting_commit_SHA" argument with the SHA of the parent')
+    auth_info = authenticate(**request.params)
+    study_id = request.matchdict['study_id']
+    phylesystem = request.registry.settings['phylesystem']
+    try:
+        x = phylesystem.delete_study(study_id, auth_info, parent_sha)
+        if x.get('error') == 0:
+            _deferred_push_to_gh_call(request, None, **request.params)
+        return x
+    except GitWorkflowError, err:
+        _raise_HTTP_from_msg(err.msg)
+    except:
+        _LOG.exception('Exception getting nexson content in phylesystem.delete_study')
+        _raise_HTTP_from_msg('Unknown error in study deletion')
+
+@view_config(route_name='options_study_id', renderer='json', request_method='OPTIONS')
+@view_config(route_name='options_study', renderer='json', request_method='OPTIONS')
+def study_options(request):
+    "A simple method for approving CORS preflight request"
+    response 
+    if request.env.http_access_control_request_method:
+        response.headers['Access-Control-Allow-Methods'] = 'POST,GET,DELETE,PUT,OPTIONS'
+    if request.env.http_access_control_request_headers:
+        response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
+    response.status_code = 200
+    return response
+
+@view_config(route_name='push_id', renderer='json')
+@view_config(route_name='push', renderer='json')
+def push_to_github(request):
+    """OpenTree API methods relating to updating branches
+
+    curl -X POST http://localhost:8000/api/push/v1/9
+    """
+
+    # support JSONP request from another domain
+    phylesystem = request.registry.settings['phylesystem']
+    study_id = request.matchdict['study_id']
+    
+    try:
+        phylesystem.push_study_to_remote('GitHubRemote', study_id)
+    except:
+        m = traceback.format_exc()
+        raise HTTPConflict(body=_err_body("Could not push! Details: {m}".format(m=m)))
+    return {'error': 0,
+            'description': 'Push succeeded'}
+
+@view_config(route_name='merge_id', renderer='json', request_method='POST')
+def merge(request):
+    """OpenTree API methods relating to updating branches
+
+    curl -X POST http://localhost:8000/api/merge/v1/9&starting_commit_SHA=152316261261342&auth_token=$GITHUB_OAUTH_TOKEN
+
+    If the request is successful, a JSON response similar to this will be returned:
+
+    {
+        "error": 0,
+        "branch_name": "my_user_9_2",
+        "description": "Updated branch",
+        "sha": "dcab222749c9185797645378d0bda08d598f81e7",
+        "merged_SHA": "16463623459987070600ab2757540c06ddepa608",
+    }
+
+    'merged_SHA' must be included in the next PUT for this study (unless you are
+        happy with your work languishing on a WIP branch instead of master).
+
+    If there is an error, an HTTP 400 error will be returned with a JSON response similar
+    to this:
+
+    {
+        "error": 1,
+        "description": "Could not merge master into WIP! Details: ..."
+    }
+    """
+    auth_info = authenticate(**request.params)
+    phylesystem = request.registry.settings['phylesystem']
+    study_id = request.matchdict['study_id']
+    gd = phylesystem.create_git_action(study_id)
+    try:
+        return merge_from_master(gd, study_id, auth_info, starting_commit_SHA)
+    except GitWorkflowError, err:
+        _raise_HTTP_from_msg(err.msg)
+    except:
+        import traceback
+        m = traceback.format_exc()
+        raise HTTPConflict(body=_err_body("Could not merge! Details: {m}".format(m=m)))
+
+
+
+@view_config(route_name='search', renderer='json', request_method='GET')
+def search(request):
+    """OpenTree API methods relating to searching
+Example:
+
+    http://localhost:8000/api/search/v1/tree/ot-ottTaxonName/Carex
+    http://localhost:8000/api/search/v1/node/ot-ottId/1000455
+
+When searching for a property name ot:foo, ot-foo must be used
+because web2py does not recognize URLs that contain a colon
+other than specifying a port, even if URL encoded.
+
+"""
+    oti_base_url = request.registry.settings['oti_base_url']
+    api_base_url = "%s/ext/QueryServices/graphdb/" % (oti_base_url,)
+    oti = OTISearch(api_base_url)
+    kind = request.matchdict['kind'].lower()
+    property_name = request.matchdict['property_name']
+    search_term = request.matchdict['search_term']
+    # colons don't play nicely with GET requests
+    property_name = property_name.replace("-",":")
+    valid_kinds = ("study", "tree", "node")
+    if kind not in valid_kinds:
+        _raise_HTTP_from_msg('not a valid property name')
+    return oti.do_search(kind, property_name, search_term)
+
+@view_config(route_name='nudge_indexers', renderer='json', request_method='POST')
+def nudge_indexers():
+    """"Support method to update oti index in response to GitHub webhooks
+
+This examines the JSON payload of a GitHub webhook to see which studies have
+been added, modified, or removed. Then it calls oti's index service to
+(re)index the NexSON for those studies, or to delete a study's information if
+it was deleted from the docstore.
+
+N.B. This depends on a GitHub webhook on the chosen docstore.
+"""
+    oti_base_url = request.registry.settings['oti_base_url']
+    opentree_docstore_url = request.registry.settings['opentree_docstore_url']
+    payload = request.params
+    msg = ''
+
+    # EXAMPLE of a working curl call to nudge index:
+    # curl -X POST -d '{"urls": ["https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/10/10.json", "https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/9/9.json"]}' -H "Content-type: application/json" http://ec2-54-203-194-13.us-west-2.compute.amazonaws.com/oti/ext/IndexServices/graphdb/indexNexsons
+
+    # Pull needed values from config file (typical values shown)
+    #   opentree_docstore_url = "https://github.com/OpenTreeOfLife/phylesystem"        # munge this to grab raw NexSON)
+    #   oti_base_url='http://ec2-54-203-194-13.us-west-2.compute.amazonaws.com/oti'    # confirm we're pushing to the right OTI service(s)!
+    try:
+        # how we nudge the index depends on which studies are new, changed, or deleted
+        added_study_ids = [ ]
+        modified_study_ids = [ ]
+        removed_study_ids = [ ]
+        # TODO: Should any of these lists override another? maybe use commit timestamps to "trump" based on later operations?
+        for commit in payload['commits']:
+            _harvest_study_ids_from_paths( commit['added'], added_study_ids )
+            _harvest_study_ids_from_paths( commit['modified'], modified_study_ids )
+            _harvest_study_ids_from_paths( commit['removed'], removed_study_ids )
+
+        # "flatten" each list to remove duplicates
+        added_study_ids = list(set(added_study_ids))
+        modified_study_ids = list(set(modified_study_ids))
+        removed_study_ids = list(set(removed_study_ids))
+
+    except:
+        _raise_HTTP_from_msg("malformed GitHub payload")
+
+    if payload['repository']['url'] != opentree_docstore_url:
+        _raise_HTTP_from_msg("wrong repo for this API instance")
+
+    #TODO Jim had urlencode=False in web2py. need to ask him why that was needed...
+    nexson_url_template = route_url('get_study_id',
+                                    request,
+                                    study_id='%s',
+                                    _query={'output_nexml2json': '0.0.0'})
+    # for now, let's just add/update new and modified studies using indexNexsons
+    add_or_update_ids = added_study_ids + modified_study_ids
+    # NOTE that passing deleted_study_ids (any non-existent file paths) will
+    # fail on oti, with a FileNotFoundException!
+    add_or_update_ids = list(set(add_or_update_ids))  # remove any duplicates
+
+    if len(add_or_update_ids) > 0:
+        nudge_url = "%s/ext/IndexServices/graphdb/indexNexsons" % (oti_base_url,)
+        nexson_urls = [ (nexson_url_template % (study_id,)) for study_id in add_or_update_ids ]
+
+        # N.B. that gluon.tools.fetch() can't be used here, since it won't send
+        # "raw" JSON data as treemachine expects
+        req = urllib2.Request(
+            url=nudge_url, 
+            data=json.dumps({
+                "urls": nexson_urls
+            }), 
+            headers={"Content-Type": "application/json"}
+        ) 
+        try:
+            nudge_response = urllib2.urlopen(req).read()
+            updated_study_ids = json.loads( nudge_response )
+        except Exception, e:
+            # TODO: log oti exceptions into my response
+            msg += """indexNexsons failed!'
+nudge_url: %s
+nexson_url_template: %s
+nexson_urls: %s
+%s""" % (nudge_url, nexson_url_template, nexson_urls, traceback.format_exc(),)
+            _LOG.exception(msg)
+        # TODO: check returned IDs against our original lists... what if something failed?
+
+    if len(removed_study_ids) > 0:
+        # Un-index the studies that were removed from docstore
+        remove_url = "%s/ext/IndexServices/graphdb/unindexNexsons" % (oti_base_url,)
+        req = urllib2.Request(
+            url=remove_url, 
+            data=json.dumps({
+                "ids": removed_study_ids
+            }), 
+            headers={"Content-Type": "application/json"}
+        ) 
+        try:
+            remove_response = urllib2.urlopen(req).read()
+            unindexed_study_ids = json.loads( remove_response )
+        except Exception, e:
+            msg += """unindexNexsons failed!'
+remove_url: %s
+removed_study_ids: %s
+%s""" % (remove_url, removed_study_ids, traceback.format_exc(),)
+            _LOG.exception(msg)
+
+        # TODO: check returned IDs against our original list... what if something failed?
+
+    github_webhook_url = "%s/settings/hooks" % opentree_docstore_url
+    return """This URL should be called by a webhook set in the docstore repo:
+<br /><br />
+<a href="%s">%s</a><br />
+<pre>%s</pre>
+""" % (github_webhook_url, github_webhook_url, msg,)
+
+def _harvest_study_ids_from_paths( path_list, target_array ):
+    for path in path_list:
+        path_parts = path.split('/')
+        if path_parts[0] == "study":
+            # skip any intermediate directories in docstore repo
+            study_id = path_parts[ len(path_parts) - 2 ]
+            target_array.append(study_id)
+
 
 def _validate_output_nexml2json(phylesystem, params, resource, content_id=None):
     msg = None

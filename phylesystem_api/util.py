@@ -7,6 +7,7 @@ from peyotl.nexson_syntax import get_empty_nexson, BY_ID_HONEY_BADGERFISH
 from sh import git
 import logging
 import anyjson
+import requests
 import os
 _LOG = logging.getLogger(__name__)
 
@@ -127,6 +128,32 @@ class GitData(GitAction):
 
         new_sha      = git(self.gitdir, self.gitwd, "rev-parse","HEAD")
         return new_sha.strip()
+
+class OTISearch(object):
+    def __init__(self, api_base_url):
+        self.api_base_url = api_base_url;
+
+    def do_search(self, kind, key, value):
+        kind_to_oti_url = {
+            "tree": "singlePropertySearchForTrees/",
+            "node": "singlePropertySearchForTreeNodes/",
+            "study": "singlePropertySearchForStudies/"
+        }
+
+        headers = {
+            'content-type': 'application/json',
+            'accept':       'application/json',
+        }
+        search_url = self.api_base_url + kind_to_oti_url[kind]
+        data = { "property": key, "value": value }
+
+        r = requests.post(search_url, headers=headers, data=anyjson.dumps(data), allow_redirects=True)
+        try:
+            response = r.json()
+        except:
+            return anyjson.dumps({"error": 1})
+
+        return response
 
 
 def new_nexson_with_crossref_metadata(doi, ref_string, include_cc0=False):
