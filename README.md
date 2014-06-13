@@ -1,4 +1,4 @@
-# pyraphylee - a pyramid implementation of phylesystem-api
+# pyraphyletic - a pyramid implementation of phylesystem-api
 
 This is an untested port of the phylesystem-api from web2py to pyramid.
 
