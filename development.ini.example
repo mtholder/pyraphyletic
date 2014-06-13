@@ -1,0 +1,86 @@
+###
+# app configuration
+# http://docs.pylonsproject.org/projects/pyramid/en/1.5-branch/narr/environment.html
+###
+
+[app:main]
+use = egg:phylesystem_api
+
+pyramid.reload_templates = true
+pyramid.debug_authorization = false
+pyramid.debug_notfound = false
+pyramid.debug_routematch = false
+pyramid.default_locale_name = en
+pyramid.includes =
+    pyramid_debugtoolbar
+
+##############################################################
+# the full path to the parent of the  phylesystem-# git dir(s)
+repo_parent   = REPO_PAR
+
+#################################################
+# the remote to push changes to
+# This will usually be "origin" on a local dev machine where phylesystem.git
+#   was cloned via SSH (git@github.com:...)
+# On deployed servers, which use anonymous git:// protocol, we add a new
+#   remote "originssh" which can be pushed to
+repo_remote = REPO_REMOTE
+
+# these allow us to specify the SSH keys that git pushes
+# will use. Leave the config keys in this config file,
+# without any values assigned, to not use this feature
+git_ssh     = GIT_SSH
+pkey        = PKEY
+
+# Push scripts will substitute the OTI_BASE_URL server-config variables, shared
+# with other apps.
+oti_base_url = OTI_BASE_URL
+opentree_docstore_url = OPENTREE_DOCSTORE_URL
+
+# prefix for the GitHubRemote used in the push mirror
+# git_hub_remote = git@github.com:OpenTreeOfLife
+
+# By default, the toolbar only appears for clients from IP addresses
+# '127.0.0.1' and '::1'.
+# debugtoolbar.hosts = 127.0.0.1 ::1
+
+###
+# wsgi server configuration
+###
+
+[server:main]
+use = egg:waitress#main
+host = 0.0.0.0
+port = 6543
+
+###
+# logging configuration
+# http://docs.pylonsproject.org/projects/pyramid/en/1.5-branch/narr/logging.html
+###
+
+[loggers]
+keys = root, phylesystem_api
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = INFO
+handlers = console
+
+[logger_phylesystem_api]
+level = OPEN_TREE_API_LOGGING_LEVEL
+handlers =
+qualname = phylesystem_api
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(asctime)s %(levelname)-5.5s [%(name)s][%(threadName)s] %(message)s
