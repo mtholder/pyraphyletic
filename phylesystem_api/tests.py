@@ -10,8 +10,9 @@ class ViewTests(unittest.TestCase):
     def tearDown(self):
         testing.tearDown()
 
-    def test_my_view(self):
-        from .views import my_view
+    def test_index(self):
         request = testing.DummyRequest()
-        info = my_view(request)
-        self.assertEqual(info['project'], 'phylesystem_api')
+        from phylesystem_api.views import index
+        d = index(request)
+        for k in ['documentation_url', 'description', 'source_url']:
+            self.assertIn(k, d)

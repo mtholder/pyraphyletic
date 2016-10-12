@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+'''
 import logging
 import os
 
@@ -187,3 +188,4 @@ def new_nexson_with_crossref_metadata(doi, ref_string, include_cc0=False):
     if meta_year:
         nexml_el[u'^ot:studyYear'] = meta_year
     return nexson
+'''

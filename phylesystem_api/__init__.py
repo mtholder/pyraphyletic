@@ -1,4 +1,4 @@
-from phylesystem_api.util import get_phylesystem
+#from phylesystem_api.util import get_phylesystem
 from pyramid.config import Configurator
 from pyramid.request import Request
 from pyramid.request import Response

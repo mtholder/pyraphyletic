@@ -1,4 +1,18 @@
-import logging
+from peyotl import get_logger
+from pyramid.view import view_config
+
+_LOG = get_logger(__name__)
+
+@view_config(route_name='home', renderer='json')
+def index(request):
+    return {
+        "description": "The Open Tree API",
+        "source_url": "https://github.com/mtholder/pyraphyletic",
+        "documentation_url": "https://github.com/OpenTreeOfLife/phylesystem-api/tree/master/docs"
+    }
+
+
+'''
 import traceback
 import urllib2
 
@@ -12,31 +26,12 @@ from pyramid.httpexceptions import HTTPNotFound, HTTPBadRequest, HTTPConflict
 from pyramid.url import route_url
 from pyramid.view import view_config
 
+
 from phylesystem_api.util import err_body, \
     raise_http_error_from_msg, \
     authenticate, \
     new_nexson_with_crossref_metadata, \
     OTISearch
-
-_LOG = logging.getLogger(__name__)
-try:
-    from phylesystem_api.tasks import call_http_json
-
-    _LOG.debug('call_http_json imported')
-except:
-    call_http_json = None
-    _LOG.debug('call_http_json was not imported from open_tree_tasks')
-
-
-@view_config(route_name='home', renderer='json')
-def index(request):
-    return {
-        "description": "The Open Tree API",
-        "source_url": "https://github.com/OpenTreeOfLife/phylesystem-api/",
-        "documentation_url": "https://github.com/OpenTreeOfLife/phylesystem-api/tree/master/docs"
-    }
-
-
 @view_config(route_name='study_list', renderer='json')
 def study_list(request):
     return request.registry.settings['phylesystem'].get_study_ids()
@@ -685,3 +680,4 @@ def _finish_write_verb(phylesystem,
         _LOG.debug('annotated_commit failed')
         raise_http_error_from_msg(json.dumps(annotated_commit))
     return annotated_commit
+'''
