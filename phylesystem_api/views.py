@@ -1,6 +1,7 @@
 from peyotl import get_logger
 from pyramid.view import view_config
 from pyramid.response import Response
+from pyramid.httpexceptions import exception_response
 import markdown
 import bleach
 
@@ -18,10 +19,14 @@ def index(request):
 
 @view_config(route_name='render_markdown')
 def render_markdown(request):
+    try:
+        src = request.POST['src']
+    except KeyError:
+        raise exception_response(400, explanation='"src" parameter not found in POST')
     def add_blank_target(attrs, new=False):
         attrs['target'] = '_blank'
         return attrs
-    h = markdown.markdown(request.POST)
+    h = markdown.markdown(src)
     h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
     h = bleach.linkify(h, callbacks=[add_blank_target])
     return Response(h)
