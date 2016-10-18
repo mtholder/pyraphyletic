@@ -33,6 +33,7 @@ def main(global_config, **settings):
     config.set_request_factory(request_factory)
     config.add_static_view('static', 'static', cache_max_age=3600)
     config.add_route('home', '/')
+    config.add_route('render_markdown', '/render_markdown')
     for v in '123':
         vstr = '/v{v}/'.format(v=v)
         skip = '''

@@ -4,4 +4,5 @@ anyjson
 pyramid
 pyramid_chameleon
 pyramid_debugtoolbar
-waitress
+waitressmarkdown
+bleach

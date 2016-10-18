@@ -1,5 +1,8 @@
 from peyotl import get_logger
 from pyramid.view import view_config
+from pyramid.response import Response
+import markdown
+import bleach
 
 _LOG = get_logger(__name__)
 
@@ -11,6 +14,17 @@ def index(request):
         "source_url": "https://github.com/mtholder/pyraphyletic",
         "documentation_url": "https://github.com/OpenTreeOfLife/phylesystem-api/tree/master/docs"
     }
+
+
+@view_config(route_name='render_markdown')
+def render_markdown(request):
+    def add_blank_target(attrs, new=False):
+        attrs['target'] = '_blank'
+        return attrs
+    h = markdown.markdown(request.POST)
+    h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
+    h = bleach.linkify(h, callbacks=[add_blank_target])
+    return Response(h)
 
 
 '''
