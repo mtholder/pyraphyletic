@@ -27,7 +27,7 @@ def render_markdown(request):
         attrs['target'] = '_blank'
         return attrs
     h = markdown.markdown(src)
-    h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
+    h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'em', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
     h = bleach.linkify(h, callbacks=[add_blank_target])
     return Response(h)
 
