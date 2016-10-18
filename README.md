@@ -9,7 +9,7 @@ We don't have an immediate plan to replace the web2py version with this one. (se
 
 # Instructions
 
-1. copy `development.ini.exmample` to `development.ini`
+1. copy `development.ini.example` to `development.ini`
 
 2. tweak the settings in `[app:main]` as you would for the web2py impl.
 

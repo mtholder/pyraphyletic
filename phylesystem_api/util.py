@@ -1,4 +1,21 @@
 #!/usr/bin/env python
+from peyotl import get_logger
+from peyotl import create_doc_store_wrapper
+
+_LOG = get_logger(__name__)
+_DOC_STORE = None
+
+
+def get_phylesystem(settings):
+    global _DOC_STORE
+    if _DOC_STORE is not None:
+        return _DOC_STORE
+    repo_parent = settings['repo_parent']
+    _DOC_STORE = create_doc_store_wrapper(repo_parent)
+    _LOG.debug('repo_nexml2json = {}'.format(_DOC_STORE.phylesystem.repo_nexml2json))
+    return _DOC_STORE
+
+
 '''
 import logging
 import os
@@ -13,32 +30,8 @@ from pyramid.httpexceptions import HTTPBadRequest
 
 _LOG = logging.getLogger(__name__)
 
-_PHYLESYSTEM = None
 
 
-def get_phylesystem(settings):
-    global _PHYLESYSTEM
-    if _PHYLESYSTEM is not None:
-        return _PHYLESYSTEM
-    repo_parent = settings['repo_parent']
-    git_ssh = settings.get('git_ssh', 'ssh')
-    pkey = settings.get('pkey')
-    git_hub_remote = settings.get('git_hub_remote', 'git@github.com:OpenTreeOfLife')
-    push_mirror = os.path.join(repo_parent, 'mirror')
-    pmi = {
-        'parent_dir': push_mirror,
-        'remote_map': {
-            'GitHubRemote': git_hub_remote,
-        },
-    }
-    mirror_info = {'push': pmi}
-    _PHYLESYSTEM = Phylesystem(repos_par=repo_parent,
-                               git_ssh=git_ssh,
-                               pkey=pkey,
-                               git_action_class=PhylesystemGitAction,
-                               mirror_info=mirror_info)
-    _LOG.debug('repo_nexml2json = {}'.format(_PHYLESYSTEM.repo_nexml2json))
-    return _PHYLESYSTEM
 
 
 def err_body(description):

@@ -3,6 +3,7 @@ from pyramid.view import view_config
 
 _LOG = get_logger(__name__)
 
+
 @view_config(route_name='home', renderer='json')
 def index(request):
     return {

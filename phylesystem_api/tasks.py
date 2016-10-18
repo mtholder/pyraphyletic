@@ -8,6 +8,7 @@ import json
 celery = Celery()
 celery.config_from_object('celeryconfig')
 
+
 # noinspection PyBroadException
 @celery.task
 def call_http_json(url,
@@ -16,7 +17,7 @@ def call_http_json(url,
                    headers=None):
     _LOG = get_logger(__name__)
     if headers is None:
-        headers = {'content-type': 'application/json', 'accept': 'application/json',}
+        headers = {'content-type': 'application/json', 'accept': 'application/json', }
     _LOG.debug('url = {}  verb = {}  data = {}'.format(url, verb, data))
     resp = None
     try:
