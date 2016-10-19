@@ -37,7 +37,7 @@ script. For instance, @mtholder
   2. The he created a subdirectory inside of pyraphyletic called "shards"
   to serve as the repo parent by running:
 
-    bash setup-testing-repos.bash shards git@github.com:mtholder
+    bash setup-local-testing-repos.bash shards git@github.com:mtholder
 
 #### for a production or dev server
 When deploying on a new machine that will act as  one of the Open 
