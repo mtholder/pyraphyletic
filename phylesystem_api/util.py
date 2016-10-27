@@ -11,9 +11,14 @@ def get_phylesystem(settings):
     if _DOC_STORE is not None:
         return _DOC_STORE
     repo_parent = settings['repo_parent']
+    _LOG.debug('creating Doc Store Wrapper from repo_parent="{}"'.format(repo_parent))
     _DOC_STORE = create_doc_store_wrapper(repo_parent)
     _LOG.debug('repo_nexml2json = {}'.format(_DOC_STORE.phylesystem.repo_nexml2json))
     return _DOC_STORE
+
+def fill_app_settings(settings):
+    wrapper = get_phylesystem(settings)
+    settings['phylesystem'] = wrapper.phylesystem
 
 
 '''

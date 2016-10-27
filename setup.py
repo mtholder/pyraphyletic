@@ -14,6 +14,11 @@ requires = [
     'pyramid_debugtoolbar',
     'waitress',
     ]
+tests_require = [
+    'WebTest >= 1.3.1',  # py3 compat
+    'pytest',  # includes virtualenv
+    'pytest-cov',
+    ]
 
 setup(name='phylesystem_api',
       version='0.0',
@@ -33,7 +38,8 @@ setup(name='phylesystem_api',
       include_package_data=True,
       zip_safe=False,
       install_requires=requires,
-      tests_require=requires,
+      tests_require=tests_require,
+      extras_require={'testing': tests_require,},
       test_suite="phylesystem_api",
       entry_points="""\
       [paste.app_factory]

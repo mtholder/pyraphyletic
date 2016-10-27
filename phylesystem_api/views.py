@@ -31,6 +31,9 @@ def render_markdown(request):
     h = bleach.linkify(h, callbacks=[add_blank_target])
     return Response(h)
 
+@view_config(route_name='study_list', renderer='json')
+def study_list(request):
+    return request.registry.settings['phylesystem'].get_study_ids()
 
 '''
 import traceback
