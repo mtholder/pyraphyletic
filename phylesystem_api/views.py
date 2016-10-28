@@ -44,6 +44,12 @@ def render_markdown(request):
 def study_list(request):
     return request.registry.settings['phylesystem'].get_study_ids() + [request.matchdict['api_version']]
 
+@view_config(route_name='phylesystem_config', renderer='json')
+@api_versioned
+def phylesystem_config(request):
+    return request.registry.settings['phylesystem'].get_configuration_dict()
+
+
 '''
 import traceback
 import urllib2
@@ -64,9 +70,6 @@ from phylesystem_api.util import err_body, \
     authenticate, \
     new_nexson_with_crossref_metadata, \
     OTISearch
-@view_config(route_name='study_list', renderer='json')
-def study_list(request):
-    return request.registry.settings['phylesystem'].get_study_ids()
 
 
 @view_config(route_name='phylesystem_config', renderer='json')

@@ -33,6 +33,8 @@ def main(global_config, **settings):
     config.add_route('home', '/')
     config.add_route('render_markdown', '/render_markdown')
     config.add_route('study_list', '{api_version}/study_list')
+    config.add_route('phylesystem_config', '{api_version}/phylesystem_config')
+
     skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')
         config.add_route('get_sub_id', vstr + 'study/{study_id}/{subresource}/{subresource_id}')
@@ -48,7 +50,6 @@ def main(global_config, **settings):
         config.add_route('nudge_indexers', vstr + 'nudgeIndexOnUpdates')
         config.add_route('merge_id', vstr + 'merge')
         config.add_route('push', vstr + 'push')
-        config.add_route('phylesystem_config', vstr + 'phylesystem_config')
         config.add_route('unmerged_branches', vstr + 'unmerged_branches')
         config.add_route('external_url', vstr + 'external_url/{study_id}')
         config.add_route('repo_nexson_format', vstr + 'repo_nexson_format')

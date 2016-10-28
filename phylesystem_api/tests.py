@@ -14,6 +14,12 @@ def get_app_settings_for_testing(settings):
     settings['repo_parent'] = cfg.get('app:main', 'repo_parent')
     fill_app_settings(settings=settings)
 
+def gen_versioned_dummy_request():
+    req = testing.DummyRequest()
+    get_app_settings_for_testing(req.registry.settings)
+    req.matchdict['api_version'] = 'v3'
+    return req
+
 class ViewTests(unittest.TestCase):
     def setUp(self):
         self.config = testing.setUp()
@@ -37,9 +43,15 @@ class ViewTests(unittest.TestCase):
         self.assertEquals(d.body, expected)
 
     def test_study_list(self):
-        request = testing.DummyRequest()
-        get_app_settings_for_testing(request.registry.settings)
+        request = gen_versioned_dummy_request()
         from phylesystem_api.views import study_list
         x = study_list(request)
+        print(x)
+
+    def test_phylesystem_config(self):
+        request = gen_versioned_dummy_request()
+        from phylesystem_api.views import phylesystem_config
+        x = phylesystem_config(request)
+        print(x)
 
 
