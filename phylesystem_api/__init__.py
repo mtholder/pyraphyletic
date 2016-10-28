@@ -32,10 +32,8 @@ def main(global_config, **settings):
     config.add_static_view('static', 'static', cache_max_age=3600)
     config.add_route('home', '/')
     config.add_route('render_markdown', '/render_markdown')
-    for v in '123':
-        vstr = '/v{v}/'.format(v=v)
-        config.add_route('study_list', vstr + 'study_list')
-        skip = '''
+    config.add_route('study_list', '{api_version}/study_list')
+    skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')
         config.add_route('get_sub_id', vstr + 'study/{study_id}/{subresource}/{subresource_id}')
         config.add_route('get_study_id', vstr + 'study/{study_id}')

@@ -7,6 +7,14 @@ import bleach
 
 _LOG = get_logger(__name__)
 
+_API_VERSIONS = frozenset(['v1', 'v2', 'v3'])
+def api_versioned(view_fn):
+    def check_version(request, *args, **kwargs):
+        vstr = request.matchdict.get('api_version')
+        if vstr not in _API_VERSIONS:
+            raise exception_response(404, explanation='API version "{}" is not supported'.format(vstr))
+        return view_fn(request, *args, **kwargs)
+    return check_version
 
 @view_config(route_name='home', renderer='json')
 def index(request):
@@ -32,8 +40,9 @@ def render_markdown(request):
     return Response(h)
 
 @view_config(route_name='study_list', renderer='json')
+@api_versioned
 def study_list(request):
-    return request.registry.settings['phylesystem'].get_study_ids()
+    return request.registry.settings['phylesystem'].get_study_ids() + [request.matchdict['api_version']]
 
 '''
 import traceback
