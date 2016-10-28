@@ -42,12 +42,23 @@ def render_markdown(request):
 @view_config(route_name='study_list', renderer='json')
 @api_versioned
 def study_list(request):
-    return request.registry.settings['phylesystem'].get_study_ids() + [request.matchdict['api_version']]
+    return request.registry.settings['phylesystem'].get_study_ids()
 
 @view_config(route_name='phylesystem_config', renderer='json')
 @api_versioned
 def phylesystem_config(request):
     return request.registry.settings['phylesystem'].get_configuration_dict()
+
+
+
+@view_config(route_name='unmerged_branches', renderer='json')
+@api_versioned
+def unmerged_branches(request):
+    phylesystem = request.registry.settings['phylesystem']
+    bs = set(phylesystem.get_branch_list())
+    bl = [i for i in bs if i != 'master']
+    bl.sort()
+    return bl
 
 
 '''
@@ -70,19 +81,6 @@ from phylesystem_api.util import err_body, \
     authenticate, \
     new_nexson_with_crossref_metadata, \
     OTISearch
-
-
-@view_config(route_name='phylesystem_config', renderer='json')
-def phylesystem_config(request):
-    return request.registry.settings['phylesystem'].get_configuration_dict()
-
-
-@view_config(route_name='unmerged_branches', renderer='json')
-def unmerged_branches(request):
-    phylesystem = request.registry.settings['phylesystem']
-    bl = phylesystem.get_branch_list()
-    bl.sort()
-    return bl
 
 
 @view_config(route_name='external_url', renderer='json')

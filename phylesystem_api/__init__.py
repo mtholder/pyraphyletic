@@ -34,6 +34,7 @@ def main(global_config, **settings):
     config.add_route('render_markdown', '/render_markdown')
     config.add_route('study_list', '{api_version}/study_list')
     config.add_route('phylesystem_config', '{api_version}/phylesystem_config')
+    config.add_route('unmerged_branches', '{api_version}/unmerged_branches')
 
     skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')

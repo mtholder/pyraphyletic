@@ -42,16 +42,20 @@ class ViewTests(unittest.TestCase):
         expected = '<p>hi from <a href="http://phylo.bio.ku.edu" target="_blank">http://phylo.bio.ku.edu</a> and  <a href="https://github.com/orgs/OpenTreeOfLife/dashboard" target="_blank">https://github.com/orgs/OpenTreeOfLife/dashboard</a></p>'
         self.assertEquals(d.body, expected)
 
-    def test_study_list(self):
+    def test_study_list_and_config(self):
         request = gen_versioned_dummy_request()
         from phylesystem_api.views import study_list
-        x = study_list(request)
-        print(x)
-
-    def test_phylesystem_config(self):
+        sl = study_list(request)
         request = gen_versioned_dummy_request()
         from phylesystem_api.views import phylesystem_config
         x = phylesystem_config(request)
-        print(x)
+        nsis = sum([i['number of studies'] for i in x['shards']])
+        self.assertEquals(nsis, len(sl))
 
+
+    def test_unmerged(self):
+        request = gen_versioned_dummy_request()
+        from phylesystem_api.views import unmerged_branches
+        ub = unmerged_branches(request)
+        self.assertTrue('master' not in ub)
 
