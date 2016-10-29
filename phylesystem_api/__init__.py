@@ -27,6 +27,7 @@ def request_factory(environ):
 def main(global_config, **settings):
     """ This function returns a Pyramid WSGI application.
     """
+    from phylesystem_api.views import get_resource_type_to_umbrella_name_copy
     fill_app_settings(settings)
     config = Configurator(settings=settings)
     config.include('pyramid_chameleon')
@@ -34,15 +35,25 @@ def main(global_config, **settings):
     config.add_static_view('static', 'static', cache_max_age=3600)
     config.add_route('home', '/')
     config.add_route('render_markdown', '/render_markdown')
-    vstr = '{api_version:v1|v2|v3}'
-    config.add_route('study_list', vstr + '/study_list')
-    # Deprecate in phylesystem_config in favor of generic_config
-    config.add_route('phylesystem_config', vstr + '/phylesystem_config')
-    config.add_route('generic_config',  vstr + '/{resource_type}/config')
-    # v3/unmerged_branches defaults to phylesystem
-    config.add_route('unmerged_branches',  vstr + '/{resource_type}/unmerged_branches')
+    # Some routes need to have a API version prefix.
+    # Some need a resource_type  like study, amendment, collection
+    # And other need version/resource_type
+    # So we compose these prefixes here
+    v_prefix = '{api_version:v1|v2|v3}'
+    rt_keys = get_resource_type_to_umbrella_name_copy().keys()
+    joined_rt_keys = '|'.join(rt_keys)
+    rt_prefix = '{resource_type:' + joined_rt_keys + '}'
+    v_rt_prefix = v_prefix + '/' + rt_prefix
 
-    config.add_route('study_external_url', vstr + '/external_url/{study_id}')
+    # Set up the routes that we anticipate using in v4 and above:
+    config.add_route('generic_config', v_rt_prefix + '/config')
+    config.add_route('unmerged_branches',  v_rt_prefix + '/unmerged_branches')
+    config.add_route('generic_list', v_rt_prefix + '/list')
+
+    #TODO add routes to be deprecated once our tools rely only on the generic forms
+    config.add_route('study_list', v_prefix + '/study_list')
+    config.add_route('phylesystem_config', v_prefix + '/phylesystem_config')
+    config.add_route('study_external_url', v_prefix + '/external_url/{study_id}')
     #config.add_route('options_study', '{api_version}/study')
     #config.add_route('options_study_id', '{api_version}/study/{study_id}')
     #config.add_route('options_generic', '{api_version}/{resourt_type}')
