@@ -19,6 +19,8 @@ def get_phylesystem(settings):
 def fill_app_settings(settings):
     wrapper = get_phylesystem(settings)
     settings['phylesystem'] = wrapper.phylesystem
+    settings['taxon_amendments'] = wrapper.taxon_amendments
+    settings['tree_collections'] = wrapper.tree_collections
 
 
 '''

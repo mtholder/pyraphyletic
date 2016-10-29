@@ -55,6 +55,7 @@ class ViewTests(unittest.TestCase):
 
     def test_unmerged(self):
         request = gen_versioned_dummy_request()
+        request.matchdict['resource_type'] = 'study'
         from phylesystem_api.views import unmerged_branches
         ub = unmerged_branches(request)
         self.assertTrue('master' not in ub)

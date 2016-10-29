@@ -8,6 +8,17 @@ import bleach
 _LOG = get_logger(__name__)
 
 _API_VERSIONS = frozenset(['v1', 'v2', 'v3'])
+_RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
+                                          'study': 'phylesystem',
+                                          'studies': 'phylesystem',
+                                          'taxon_amendments': 'taxon_amendments',
+                                          'amendments': 'taxon_amendments',
+                                          'amendment': 'taxon_amendments',
+                                          'tree_collections': 'tree_collections',
+                                          'collections': 'tree_collections',
+                                          'collection': 'tree_collections',
+                                          }
+
 def api_versioned(view_fn):
     def check_version(request, *args, **kwargs):
         vstr = request.matchdict.get('api_version')
@@ -15,6 +26,21 @@ def api_versioned(view_fn):
             raise exception_response(404, explanation='API version "{}" is not supported'.format(vstr))
         return view_fn(request, *args, **kwargs)
     return check_version
+
+def generic_umbrella(view_fn):
+    """This decorator is used to match requests that contain a resource_type
+    in the matchdict. If that string in not in the _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY
+    dict, then a 404 is raised. Otherwise the appropriate "umbrella" is located
+    in the global settings, and the view function is called with the
+    request and the umbrella object as the first 2 arguments"""
+    def check_resource_type(request, *args, **kwargs):
+        rtstr = request.matchdict.get('resource_type')
+        key_name = _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY.get(rtstr)
+        if key_name is None:
+            raise exception_response(404, explanation='Resource type "{}" is not supported'.format(rtstr))
+        umbrella = request.registry.settings[key_name]
+        return view_fn(request, umbrella, *args, **kwargs)
+    return check_resource_type
 
 @view_config(route_name='home', renderer='json')
 def index(request):
@@ -53,12 +79,28 @@ def phylesystem_config(request):
 
 @view_config(route_name='unmerged_branches', renderer='json')
 @api_versioned
-def unmerged_branches(request):
-    phylesystem = request.registry.settings['phylesystem']
-    bs = set(phylesystem.get_branch_list())
+@generic_umbrella
+def unmerged_branches(request, umbrella):
+    """Returns the non-master branches for a resource_type.
+    Default is request.matchdict['resource_type'] is 'phylesystem'.
+    """
+    bs = set(umbrella.get_branch_list())
     bl = [i for i in bs if i != 'master']
     bl.sort()
     return bl
+
+@view_config(route_name='external_url', renderer='json')
+@api_versioned
+def external_url(request):
+    phylesystem = request.registry.settings['phylesystem']
+    study_id = request.matchdict['study_id']
+    try:
+        u = phylesystem.get_public_url(study_id)
+        return {'url': u, 'study_id': study_id}
+    except:
+        msg = 'study {} not found'.format(study_id)
+        _LOG.exception(msg)
+        raise HTTPNotFound(body=anyjson.dumps({'error': 1, 'description': msg}))
 
 
 '''
@@ -81,19 +123,6 @@ from phylesystem_api.util import err_body, \
     authenticate, \
     new_nexson_with_crossref_metadata, \
     OTISearch
-
-
-@view_config(route_name='external_url', renderer='json')
-def external_url(request):
-    phylesystem = request.registry.settings['phylesystem']
-    study_id = request.matchdict['study_id']
-    try:
-        u = phylesystem.get_public_url(study_id)
-        return {'url': u, 'study_id': study_id}
-    except:
-        msg = 'study {} not found'.format(study_id)
-        _LOG.exception(msg)
-        raise HTTPNotFound(body=anyjson.dumps({'error': 1, 'description': msg}))
 
 
 @view_config(route_name='repo_nexson_format', renderer='json')
