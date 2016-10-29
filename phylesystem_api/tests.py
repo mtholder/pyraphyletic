@@ -4,6 +4,7 @@ import os
 from pyramid import testing
 from phylesystem_api.util import fill_app_settings
 
+
 def get_app_settings_for_testing(settings):
     from peyotl.utility.imports import SafeConfigParser
     cfg = SafeConfigParser()
@@ -14,11 +15,38 @@ def get_app_settings_for_testing(settings):
     settings['repo_parent'] = cfg.get('app:main', 'repo_parent')
     fill_app_settings(settings=settings)
 
+
 def gen_versioned_dummy_request():
     req = testing.DummyRequest()
     get_app_settings_for_testing(req.registry.settings)
     req.matchdict['api_version'] = 'v3'
     return req
+
+
+def check_index_response(test_case, response):
+    for k in ['documentation_url', 'description', 'source_url']:
+        test_case.assertIn(k, response)
+
+
+def check_render_markdown_response(test_case, response):
+    expected = '<p>hi from <a href="http://phylo.bio.ku.edu" target="_blank">' \
+               'http://phylo.bio.ku.edu</a> and  ' \
+               '<a href="https://github.com/orgs/OpenTreeOfLife/dashboard" target="_blank">' \
+               'https://github.com/orgs/OpenTreeOfLife/dashboard</a></p>'
+    test_case.assertEquals(response.body, expected)
+
+
+def check_study_list_and_config_response(test_case, sl_response, config_response):
+    nsis = sum([i['number of studies'] for i in config_response['shards']])
+    test_case.assertEquals(nsis, len(sl_response))
+
+
+def check_unmerged_response(test_case, ub):
+    test_case.assertTrue('master' not in ub)
+
+render_test_input = 'hi from <a href="http://phylo.bio.ku.edu" target="new">' \
+                    'http://phylo.bio.ku.edu</a> and  ' \
+                    'https://github.com/orgs/OpenTreeOfLife/dashboard'
 
 class ViewTests(unittest.TestCase):
     def setUp(self):
@@ -28,19 +56,14 @@ class ViewTests(unittest.TestCase):
         testing.tearDown()
 
     def test_index(self):
-        request = testing.DummyRequest()
+        request = gen_versioned_dummy_request()
         from phylesystem_api.views import index
-        d = index(request)
-        for k in ['documentation_url', 'description', 'source_url']:
-            self.assertIn(k, d)
+        check_index_response(self, index(request))
 
     def test_render_markdown(self):
-        inp = 'hi from <a href="http://phylo.bio.ku.edu" target="new">http://phylo.bio.ku.edu</a> and  https://github.com/orgs/OpenTreeOfLife/dashboard'
-        request = testing.DummyRequest(post={'src': inp})
+        request = testing.DummyRequest(post={'src': render_test_input})
         from phylesystem_api.views import render_markdown
-        d = render_markdown(request)
-        expected = '<p>hi from <a href="http://phylo.bio.ku.edu" target="_blank">http://phylo.bio.ku.edu</a> and  <a href="https://github.com/orgs/OpenTreeOfLife/dashboard" target="_blank">https://github.com/orgs/OpenTreeOfLife/dashboard</a></p>'
-        self.assertEquals(d.body, expected)
+        check_render_markdown_response(self, render_markdown(request))
 
     def test_study_list_and_config(self):
         request = gen_versioned_dummy_request()
@@ -49,14 +72,10 @@ class ViewTests(unittest.TestCase):
         request = gen_versioned_dummy_request()
         from phylesystem_api.views import phylesystem_config
         x = phylesystem_config(request)
-        nsis = sum([i['number of studies'] for i in x['shards']])
-        self.assertEquals(nsis, len(sl))
-
+        check_study_list_and_config_response(self, sl, x)
 
     def test_unmerged(self):
         request = gen_versioned_dummy_request()
         request.matchdict['resource_type'] = 'study'
         from phylesystem_api.views import unmerged_branches
-        ub = unmerged_branches(request)
-        self.assertTrue('master' not in ub)
-
+        check_unmerged_response(self, unmerged_branches(request))

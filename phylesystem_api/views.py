@@ -19,13 +19,16 @@ _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
                                           'collection': 'tree_collections',
                                           }
 
+
 def api_versioned(view_fn):
     def check_version(request, *args, **kwargs):
         vstr = request.matchdict.get('api_version')
         if vstr not in _API_VERSIONS:
             raise exception_response(404, explanation='API version "{}" is not supported'.format(vstr))
         return view_fn(request, *args, **kwargs)
+
     return check_version
+
 
 def generic_umbrella(view_fn):
     """This decorator is used to match requests that contain a resource_type
@@ -33,6 +36,7 @@ def generic_umbrella(view_fn):
     dict, then a 404 is raised. Otherwise the appropriate "umbrella" is located
     in the global settings, and the view function is called with the
     request and the umbrella object as the first 2 arguments"""
+
     def check_resource_type(request, *args, **kwargs):
         rtstr = request.matchdict.get('resource_type')
         key_name = _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY.get(rtstr)
@@ -40,9 +44,12 @@ def generic_umbrella(view_fn):
             raise exception_response(404, explanation='Resource type "{}" is not supported'.format(rtstr))
         umbrella = request.registry.settings[key_name]
         return view_fn(request, umbrella, *args, **kwargs)
+
     return check_resource_type
 
+
 @view_config(route_name='home', renderer='json')
+@api_versioned
 def index(request):
     return {
         "description": "The Open Tree API",
@@ -57,24 +64,27 @@ def render_markdown(request):
         src = request.POST['src']
     except KeyError:
         raise exception_response(400, explanation='"src" parameter not found in POST')
+
     def add_blank_target(attrs, new=False):
         attrs['target'] = '_blank'
         return attrs
+
     h = markdown.markdown(src)
     h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'em', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
     h = bleach.linkify(h, callbacks=[add_blank_target])
     return Response(h)
+
 
 @view_config(route_name='study_list', renderer='json')
 @api_versioned
 def study_list(request):
     return request.registry.settings['phylesystem'].get_study_ids()
 
+
 @view_config(route_name='phylesystem_config', renderer='json')
 @api_versioned
 def phylesystem_config(request):
     return request.registry.settings['phylesystem'].get_configuration_dict()
-
 
 
 @view_config(route_name='unmerged_branches', renderer='json')
@@ -88,6 +98,7 @@ def unmerged_branches(request, umbrella):
     bl = [i for i in bs if i != 'master']
     bl.sort()
     return bl
+
 
 @view_config(route_name='external_url', renderer='json')
 @api_versioned

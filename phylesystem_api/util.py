@@ -16,6 +16,7 @@ def get_phylesystem(settings):
     _LOG.debug('repo_nexml2json = {}'.format(_DOC_STORE.phylesystem.repo_nexml2json))
     return _DOC_STORE
 
+
 def fill_app_settings(settings):
     wrapper = get_phylesystem(settings)
     settings['phylesystem'] = wrapper.phylesystem

@@ -4,6 +4,7 @@ from pyramid.request import Request
 from pyramid.request import Response
 from phylesystem_api.util import fill_app_settings
 
+
 # Adapted from:
 #   http://stackoverflow.com/questions/21107057/pyramid-cors-for-ajax-requests
 # and our previous CORS headers (in the web2py version of the phylesystem-api)
@@ -21,6 +22,7 @@ def request_factory(environ):
             )
         )
     return request
+
 
 def main(global_config, **settings):
     """ This function returns a Pyramid WSGI application.
