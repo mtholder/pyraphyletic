@@ -1,1 +1,7 @@
 need to talk with @jimallman about how caching is used in the phylesystem-api
+
+
+deprecate repo_nexson_format API call (in config)
+
+more generic:
+   '{api_version}/{resource_type}/config' alias for '{api_version}/phylesystem_config'

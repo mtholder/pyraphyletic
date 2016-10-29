@@ -86,6 +86,12 @@ def study_list(request):
 def phylesystem_config(request):
     return request.registry.settings['phylesystem'].get_configuration_dict()
 
+@view_config(route_name='phylesystem_config', renderer='json')
+@api_versioned
+@generic_umbrella
+def generic_config(request, umbrella):
+    return umbrella.get_configuration_dict()
+
 
 @view_config(route_name='unmerged_branches', renderer='json')
 @api_versioned
@@ -113,7 +119,6 @@ def external_url(request):
         _LOG.exception(msg)
         raise HTTPNotFound(body=anyjson.dumps({'error': 1, 'description': msg}))
 
-
 '''
 import traceback
 import urllib2
@@ -135,13 +140,6 @@ from phylesystem_api.util import err_body, \
     new_nexson_with_crossref_metadata, \
     OTISearch
 
-
-@view_config(route_name='repo_nexson_format', renderer='json')
-def repo_nexson_format(request):
-    phylesystem = request.registry.settings['phylesystem']
-    return {
-        'description': "The nexml2json property reports the version of the NexSON that is used in the document store. Using other forms of NexSON with the API is allowed, but may be slower.",
-        'nexml2json': phylesystem.repo_nexml2json}
 
 
 @view_config(route_name='get_sub', renderer='json', request_method='GET')

@@ -35,9 +35,12 @@ def main(global_config, **settings):
     config.add_route('home', '/')
     config.add_route('render_markdown', '/render_markdown')
     config.add_route('study_list', '{api_version}/study_list')
+    # Deprecate in phylesystem_config in favor of generic_config
     config.add_route('phylesystem_config', '{api_version}/phylesystem_config')
+    config.add_route('generic_config', '{api_version}/{resource_type}/config')
     # v3/unmerged_branches defaults to phylesystem
     config.add_route('unmerged_branches', '{api_version}/{resource_type}/unmerged_branches')
+
 
     skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')
@@ -56,7 +59,6 @@ def main(global_config, **settings):
         config.add_route('push', vstr + 'push')
         config.add_route('unmerged_branches', vstr + 'unmerged_branches')
         config.add_route('external_url', vstr + 'external_url/{study_id}')
-        config.add_route('repo_nexson_format', vstr + 'repo_nexson_format')
         '''
     config.scan()
     return config.make_wsgi_app()
