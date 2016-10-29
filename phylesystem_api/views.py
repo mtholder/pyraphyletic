@@ -1,9 +1,11 @@
 from peyotl import get_logger
 from pyramid.view import view_config
 from pyramid.response import Response
-from pyramid.httpexceptions import exception_response
+from pyramid.httpexceptions import exception_response, HTTPNotFound
 import markdown
+import anyjson
 import bleach
+import copy
 
 _LOG = get_logger(__name__)
 
@@ -19,17 +21,19 @@ _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
                                           'collection': 'tree_collections',
                                           }
 
+
 def get_resource_type_to_umbrella_name_copy():
     """As an interim measure we support some aliasing of "resource_type" strings
     to the different types of document store "umbrellas". This function
     returns a copy of the dict that performs that mapping."""
-    return dict(_RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY)
+    return copy.copy(_RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY)
+
 
 def check_api_version(request):
-    "Raises a 404 if the version string is not correct and returns the version string"
+    """Raises a 404 if the version string is not correct and returns the version string"""
     vstr = request.matchdict.get('api_version')
     if vstr not in _API_VERSIONS:
-        raise exception_response(404, explanation='API version "{}" is not supported'.format(vstr))
+        raise HTTPNotFound(explanation='API version "{}" is not supported'.format(vstr))
     return vstr
 
 
@@ -45,6 +49,7 @@ def umbrella_from_request(request):
         raise exception_response(404, explanation='Resource type "{}" is not supported'.format(rtstr))
     return request.registry.settings[key_name]
 
+
 def doc_id_from_request(request):
     """This function is used to match requests that contain a resource_type
         in the matchdict. If that string in not in the _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY
@@ -53,13 +58,13 @@ def doc_id_from_request(request):
         request and the umbrella object as the first 2 arguments"""
     doc_id = request.matchdict.get('doc_id')
     if doc_id is None:
-        raise exception_response(404, explanation='Document ID required')
+        raise HTTPNotFound(explanation='Document ID required')
     return doc_id
-
 
 
 def umbrella_with_id_from_request(request):
     return umbrella_from_request(request), doc_id_from_request(request)
+
 
 @view_config(route_name='home', renderer='json')
 def index(request):
@@ -87,9 +92,11 @@ def render_markdown(request):
     h = bleach.linkify(h, callbacks=[add_blank_target])
     return Response(h)
 
+
 @view_config(route_name='generic_list', renderer='json')
 def generic_list(request):
     return umbrella_from_request(request).get_doc_ids()
+
 
 @view_config(route_name='generic_config', renderer='json')
 def generic_config(request):
@@ -115,31 +122,35 @@ def external_url_generic_helper(umbrella, doc_id, doc_id_key):
     except:
         msg = 'document {} not found'.format(doc_id)
         _LOG.exception(msg)
-        raise HTTPNotFound(body=anyjson.dumps({'error': 1, 'description': msg}))
+        raise exception_response(404, body=anyjson.dumps({'error': 1, 'description': msg}))
+
 
 @view_config(route_name='generic_external_url', renderer='json')
 def external_url(request):
     umbrella, doc_id = umbrella_with_id_from_request(request)
-    return external_url_generic(umbrella, doc_id, 'doc_id')
+    return external_url_generic_helper(umbrella, doc_id, 'doc_id')
 
 
-#TODO: deprecate the URLs below here
-#TODO: deprecate in favor of generic_list
+# TODO: deprecate the URLs below here
+# TODO: deprecate in favor of generic_list
 @view_config(route_name='phylesystem_config', renderer='json')
 def phylesystem_config(request):
     return request.registry.settings['phylesystem'].get_configuration_dict()
 
-#TODO: deprecate in favor of generic_list
+
+# TODO: deprecate in favor of generic_list
 @view_config(route_name='study_list', renderer='json')
 def study_list(request):
     return request.registry.settings['phylesystem'].get_study_ids()
 
-#TODO: deprecate in favor of generic_external_url
+
+# TODO: deprecate in favor of generic_external_url
 @view_config(route_name='study_external_url', renderer='json')
 def study_external_url(request):
     phylesystem = request.registry.settings['phylesystem']
     study_id = request.matchdict['study_id']
     return external_url_generic_helper(phylesystem, study_id, 'study_id')
+
 
 '''
 @view_config(route_name='options_study_id', renderer='json', request_method='OPTIONS')

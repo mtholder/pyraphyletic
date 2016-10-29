@@ -48,9 +48,11 @@ def check_study_list_and_config_response(test_case,
 def check_unmerged_response(test_case, ub):
     test_case.assertTrue('master' not in ub)
 
+
 render_test_input = 'hi from <a href="http://phylo.bio.ku.edu" target="new">' \
                     'http://phylo.bio.ku.edu</a> and  ' \
                     'https://github.com/orgs/OpenTreeOfLife/dashboard'
+
 
 class ViewTests(unittest.TestCase):
     def setUp(self):

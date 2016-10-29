@@ -47,16 +47,17 @@ def main(global_config, **settings):
 
     # Set up the routes that we anticipate using in v4 and above:
     config.add_route('generic_config', v_rt_prefix + '/config')
-    config.add_route('unmerged_branches',  v_rt_prefix + '/unmerged_branches')
+    config.add_route('unmerged_branches', v_rt_prefix + '/unmerged_branches')
     config.add_route('generic_list', v_rt_prefix + '/list')
+    config.add_route('generic_external_url', v_rt_prefix + '/external_url')
 
-    #TODO add routes to be deprecated once our tools rely only on the generic forms
+    # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
     config.add_route('phylesystem_config', v_prefix + '/phylesystem_config')
     config.add_route('study_external_url', v_prefix + '/external_url/{study_id}')
-    #config.add_route('options_study', '{api_version}/study')
-    #config.add_route('options_study_id', '{api_version}/study/{study_id}')
-    #config.add_route('options_generic', '{api_version}/{resourt_type}')
+    # config.add_route('options_study', '{api_version}/study')
+    # config.add_route('options_study_id', '{api_version}/study/{study_id}')
+    # config.add_route('options_generic', '{api_version}/{resourt_type}')
 
     skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')
