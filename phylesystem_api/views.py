@@ -27,21 +27,17 @@ def check_api_version(request):
     return vstr
 
 
-def generic_umbrella(view_fn):
-    """This decorator is used to match requests that contain a resource_type
-    in the matchdict. If that string in not in the _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY
-    dict, then a 404 is raised. Otherwise the appropriate "umbrella" is located
-    in the global settings, and the view function is called with the
-    request and the umbrella object as the first 2 arguments"""
-
-    def check_resource_type(request, *args, **kwargs):
-        rtstr = request.matchdict.get('resource_type')
-        key_name = _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY.get(rtstr)
-        if key_name is None:
-            raise exception_response(404, explanation='Resource type "{}" is not supported'.format(rtstr))
-        umbrella = request.registry.settings[key_name]
-        return view_fn(request, umbrella, *args, **kwargs)
-    return check_resource_type
+def umbrella_from_request(request):
+    """This function is used to match requests that contain a resource_type
+        in the matchdict. If that string in not in the _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY
+        dict, then a 404 is raised. Otherwise the appropriate "umbrella" is located
+        in the global settings, and the view function is called with the
+        request and the umbrella object as the first 2 arguments"""
+    rtstr = request.matchdict.get('resource_type')
+    key_name = _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY.get(rtstr)
+    if key_name is None:
+        raise exception_response(404, explanation='Resource type "{}" is not supported'.format(rtstr))
+    return request.registry.settings[key_name]
 
 
 @view_config(route_name='home', renderer='json')
@@ -56,7 +52,6 @@ def index(request):
 
 @view_config(route_name='render_markdown')
 def render_markdown(request):
-    check_api_version(request)
     try:
         src = request.POST['src']
     except KeyError:
@@ -82,17 +77,16 @@ def phylesystem_config(request):
     return request.registry.settings['phylesystem'].get_configuration_dict()
 
 @view_config(route_name='generic_config', renderer='json')
-@generic_umbrella
-def generic_config(request, umbrella):
-    return umbrella.get_configuration_dict()
+def generic_config(request):
+    return umbrella_from_request(request).get_configuration_dict()
 
 
 @view_config(route_name='unmerged_branches', renderer='json')
-@generic_umbrella
-def unmerged_branches(request, umbrella):
+def unmerged_branches(request):
     """Returns the non-master branches for a resource_type.
     Default is request.matchdict['resource_type'] is 'phylesystem'.
     """
+    umbrella = umbrella_from_request(request)
     bs = set(umbrella.get_branch_list())
     bl = [i for i in bs if i != 'master']
     bl.sort()
