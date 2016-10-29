@@ -20,14 +20,11 @@ _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
                                           }
 
 
-def api_versioned(view_fn):
-    def check_version(request, *args, **kwargs):
-        vstr = request.matchdict.get('api_version')
-        if vstr not in _API_VERSIONS:
-            raise exception_response(404, explanation='API version "{}" is not supported'.format(vstr))
-        return view_fn(request, *args, **kwargs)
-
-    return check_version
+def check_api_version(request):
+    vstr = request.matchdict.get('api_version')
+    if vstr not in _API_VERSIONS:
+        raise exception_response(404, explanation='API version "{}" is not supported'.format(vstr))
+    return vstr
 
 
 def generic_umbrella(view_fn):
@@ -44,13 +41,12 @@ def generic_umbrella(view_fn):
             raise exception_response(404, explanation='Resource type "{}" is not supported'.format(rtstr))
         umbrella = request.registry.settings[key_name]
         return view_fn(request, umbrella, *args, **kwargs)
-
     return check_resource_type
 
 
 @view_config(route_name='home', renderer='json')
-@api_versioned
 def index(request):
+    check_api_version(request)
     return {
         "description": "The Open Tree API",
         "source_url": "https://github.com/mtholder/pyraphyletic",
@@ -60,6 +56,7 @@ def index(request):
 
 @view_config(route_name='render_markdown')
 def render_markdown(request):
+    check_api_version(request)
     try:
         src = request.POST['src']
     except KeyError:
@@ -76,25 +73,21 @@ def render_markdown(request):
 
 
 @view_config(route_name='study_list', renderer='json')
-@api_versioned
 def study_list(request):
     return request.registry.settings['phylesystem'].get_study_ids()
 
 
 @view_config(route_name='phylesystem_config', renderer='json')
-@api_versioned
 def phylesystem_config(request):
     return request.registry.settings['phylesystem'].get_configuration_dict()
 
-@view_config(route_name='phylesystem_config', renderer='json')
-@api_versioned
+@view_config(route_name='generic_config', renderer='json')
 @generic_umbrella
 def generic_config(request, umbrella):
     return umbrella.get_configuration_dict()
 
 
 @view_config(route_name='unmerged_branches', renderer='json')
-@api_versioned
 @generic_umbrella
 def unmerged_branches(request, umbrella):
     """Returns the non-master branches for a resource_type.
@@ -106,19 +99,36 @@ def unmerged_branches(request, umbrella):
     return bl
 
 
-@view_config(route_name='external_url', renderer='json')
-@api_versioned
+@view_config(route_name='study_external_url', renderer='json')
 def external_url(request):
     phylesystem = request.registry.settings['phylesystem']
     study_id = request.matchdict['study_id']
+    return external_url_generic(phylesystem, study_id, 'study_id')
+
+def external_url_generic(umbrella, doc_id, doc_id_key):
     try:
-        u = phylesystem.get_public_url(study_id)
-        return {'url': u, 'study_id': study_id}
+        u = umbrella.get_public_url(doc_id)
+        return {'url': u, doc_id_key: doc_id}
     except:
-        msg = 'study {} not found'.format(study_id)
+        msg = 'document {} not found'.format(doc_id)
         _LOG.exception(msg)
         raise HTTPNotFound(body=anyjson.dumps({'error': 1, 'description': msg}))
 
+'''
+@view_config(route_name='options_study_id', renderer='json', request_method='OPTIONS')
+@view_config(route_name='options_study', renderer='json', request_method='OPTIONS')
+@view_config(route_name='options_generic', renderer='json', request_method='OPTIONS')
+@api_versioned
+@generic_umbrella
+def study_options(request, *valist):
+    """A simple method for approving CORS preflight request"""
+    if request.env.http_access_control_request_method:
+        response.headers['Access-Control-Allow-Methods'] = 'POST,GET,DELETE,PUT,OPTIONS'
+    if request.env.http_access_control_request_headers:
+        response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
+    response.status_code = 200
+    return response
+'''
 '''
 import traceback
 import urllib2
@@ -429,16 +439,6 @@ def delete_study(request):
         raise_http_error_from_msg('Unknown error in study deletion')
 
 
-@view_config(route_name='options_study_id', renderer='json', request_method='OPTIONS')
-@view_config(route_name='options_study', renderer='json', request_method='OPTIONS')
-def study_options(request):
-    """A simple method for approving CORS preflight request"""
-    if request.env.http_access_control_request_method:
-        response.headers['Access-Control-Allow-Methods'] = 'POST,GET,DELETE,PUT,OPTIONS'
-    if request.env.http_access_control_request_headers:
-        response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
-    response.status_code = 200
-    return response
 
 
 @view_config(route_name='push_id', renderer='json')

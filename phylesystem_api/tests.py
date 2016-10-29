@@ -36,9 +36,13 @@ def check_render_markdown_response(test_case, response):
     test_case.assertEquals(response.body, expected)
 
 
-def check_study_list_and_config_response(test_case, sl_response, config_response):
+def check_study_list_and_config_response(test_case,
+                                         sl_response,
+                                         config_response,
+                                         from_generic_config):
     nsis = sum([i['number of studies'] for i in config_response['shards']])
     test_case.assertEquals(nsis, len(sl_response))
+    test_case.assertEquals(from_generic_config, config_response)
 
 
 def check_unmerged_response(test_case, ub):
@@ -72,7 +76,11 @@ class ViewTests(unittest.TestCase):
         request = gen_versioned_dummy_request()
         from phylesystem_api.views import phylesystem_config
         x = phylesystem_config(request)
-        check_study_list_and_config_response(self, sl, x)
+        request = gen_versioned_dummy_request()
+        request.matchdict['resource_type'] = 'study'
+        from phylesystem_api.views import generic_config
+        y = generic_config(request)
+        check_study_list_and_config_response(self, sl, x, y)
 
     def test_unmerged(self):
         request = gen_versioned_dummy_request()

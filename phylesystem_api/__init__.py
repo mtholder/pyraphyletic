@@ -34,13 +34,18 @@ def main(global_config, **settings):
     config.add_static_view('static', 'static', cache_max_age=3600)
     config.add_route('home', '/')
     config.add_route('render_markdown', '/render_markdown')
-    config.add_route('study_list', '{api_version}/study_list')
+    vstr = '{api_version:v1|v2|v3}'
+    config.add_route('study_list', vstr + '/study_list')
     # Deprecate in phylesystem_config in favor of generic_config
-    config.add_route('phylesystem_config', '{api_version}/phylesystem_config')
-    config.add_route('generic_config', '{api_version}/{resource_type}/config')
+    config.add_route('phylesystem_config', vstr + '/phylesystem_config')
+    config.add_route('generic_config',  vstr + '/{resource_type}/config')
     # v3/unmerged_branches defaults to phylesystem
-    config.add_route('unmerged_branches', '{api_version}/{resource_type}/unmerged_branches')
+    config.add_route('unmerged_branches',  vstr + '/{resource_type}/unmerged_branches')
 
+    config.add_route('study_external_url', vstr + '/external_url/{study_id}')
+    #config.add_route('options_study', '{api_version}/study')
+    #config.add_route('options_study_id', '{api_version}/study/{study_id}')
+    #config.add_route('options_generic', '{api_version}/{resourt_type}')
 
     skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')
@@ -52,13 +57,11 @@ def main(global_config, **settings):
         config.add_route('put_study_id', vstr + 'study/{study_id}')
         config.add_route('delete_study_id', vstr + 'study/{study_id}')
         config.add_route('options_study_id', vstr + 'study/{study_id}')
-        config.add_route('options_study', vstr + 'study')
         config.add_route('search', vstr + 'search/{kind}/{property_name}/{search_term}')
         config.add_route('nudge_indexers', vstr + 'nudgeIndexOnUpdates')
         config.add_route('merge_id', vstr + 'merge')
         config.add_route('push', vstr + 'push')
         config.add_route('unmerged_branches', vstr + 'unmerged_branches')
-        config.add_route('external_url', vstr + 'external_url/{study_id}')
         '''
     config.scan()
     return config.make_wsgi_app()
