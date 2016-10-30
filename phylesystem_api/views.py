@@ -68,7 +68,6 @@ def umbrella_with_id_from_request(request):
 
 @view_config(route_name='home', renderer='json')
 def index(request):
-    check_api_version(request)
     return {
         "description": "The Open Tree API",
         "source_url": "https://github.com/mtholder/pyraphyletic",
@@ -86,7 +85,6 @@ def extract_posted_data(request):
 
 @view_config(route_name='render_markdown', request_method='POST')
 def render_markdown(request):
-    _LOG.info('render_markdown with request.POST = {} '.format(request.text))
     data = extract_posted_data(request)
     try:
         src = data['src']
