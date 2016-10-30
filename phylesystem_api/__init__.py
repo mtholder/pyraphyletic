@@ -34,7 +34,6 @@ def main(global_config, **settings):
     config.set_request_factory(request_factory)
     config.add_static_view('static', 'static', cache_max_age=3600)
     config.add_route('home', '/')
-    config.add_route('render_markdown', '/render_markdown')
     # Some routes need to have a API version prefix.
     # Some need a resource_type  like study, amendment, collection
     # And other need version/resource_type
@@ -46,6 +45,7 @@ def main(global_config, **settings):
     v_rt_prefix = v_prefix + '/' + rt_prefix
 
     # Set up the routes that we anticipate using in v4 and above:
+    config.add_route('render_markdown', v_prefix + '/render_markdown')
     config.add_route('generic_config', v_rt_prefix + '/config')
     config.add_route('unmerged_branches', v_rt_prefix + '/unmerged_branches')
     config.add_route('generic_list', v_rt_prefix + '/list')

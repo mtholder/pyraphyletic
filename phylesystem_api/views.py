@@ -75,11 +75,21 @@ def index(request):
         "documentation_url": "https://github.com/OpenTreeOfLife/phylesystem-api/tree/master/docs"
     }
 
+def extract_posted_data(request):
+    if request.POST:
+        return request.POST
+    if request.params:
+        return request.params
+    if request.text:
+        return anyjson.loads(request.text)
+    raise exception_response(400, 'No data obtained from POST')
 
-@view_config(route_name='render_markdown')
+@view_config(route_name='render_markdown', request_method='POST')
 def render_markdown(request):
+    _LOG.info('render_markdown with request.POST = {} '.format(request.text))
+    data = extract_posted_data(request)
     try:
-        src = request.POST['src']
+        src = data['src']
     except KeyError:
         raise exception_response(400, explanation='"src" parameter not found in POST')
 
