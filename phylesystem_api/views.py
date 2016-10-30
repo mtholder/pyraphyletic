@@ -161,6 +161,11 @@ def study_external_url(request):
     study_id = request.matchdict['study_id']
     return external_url_generic_helper(phylesystem, study_id, 'study_id')
 
+# TODO: deprecate in favor of generic_list
+@view_config(route_name='list_all_amendments', renderer='json')
+def list_all_amendments(request):
+    return request.registry.settings['taxon_amendments'].get_doc_ids()
+
 
 '''
 @view_config(route_name='options_study_id', renderer='json', request_method='OPTIONS')
