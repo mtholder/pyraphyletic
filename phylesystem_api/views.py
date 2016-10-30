@@ -141,6 +141,35 @@ def external_url(request):
     return external_url_generic_helper(umbrella, doc_id, 'doc_id')
 
 
+
+# TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
+def fetch_all_docs_and_last_commit(docstore):
+    doc_list = []
+    for doc_id, props in docstore.iter_doc_objs():
+        _LOG.debug('doc_id = {}'.format(doc_id))
+        # reckon and add 'lastModified' property, based on commit history?
+        latest_commit = docstore.get_version_history_for_doc_id(doc_id)[0]
+        props.update({
+            'id': doc_id,
+            'lastModified': {
+                'author_name': latest_commit.get('author_name'),
+                'relative_date': latest_commit.get('relative_date'),
+                'display_date': latest_commit.get('date'),
+                'ISO_date': latest_commit.get('date_ISO_8601'),
+                'sha': latest_commit.get('id')  # this is the commit hash
+            }
+        })
+        doc_list.append(props)
+    return doc_list
+
+@view_config(route_name='fetch_all_amendments', renderer='json')
+def fetch_all_amendments(request):
+    return fetch_all_docs_and_last_commit(request.registry.settings['taxon_amendments'])
+
+@view_config(route_name='fetch_all_collections', renderer='json')
+def fetch_all_collections(request):
+    return fetch_all_docs_and_last_commit(request.registry.settings['tree_collections'])
+
 # TODO: deprecate the URLs below here
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='phylesystem_config', renderer='json')

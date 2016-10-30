@@ -55,7 +55,10 @@ def main(global_config, **settings):
     config.add_route('study_list', v_prefix + '/study_list')
     config.add_route('phylesystem_config', v_prefix + '/phylesystem_config')
     config.add_route('study_external_url', v_prefix + '/external_url/{study_id}')
-    config.add_route('amendment_list', v_prefix + '/amendments/list_all')
+    config.add_route('amendment_list', v_prefix + '/amendments/amendment_list')
+    config.add_route('fetch_all_amendments', v_prefix + '/amendments/list_all') #really fetch all+last commit
+    config.add_route('fetch_all_collections', v_prefix + '/collections/find_collections') #really fetch all+last commit
+
     # config.add_route('options_study', '{api_version}/study')
     # config.add_route('options_study_id', '{api_version}/study/{study_id}')
     # config.add_route('options_generic', '{api_version}/{resourt_type}')
