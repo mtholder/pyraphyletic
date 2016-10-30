@@ -89,3 +89,6 @@ class ViewTests(unittest.TestCase):
         request.matchdict['resource_type'] = 'study'
         from phylesystem_api.views import unmerged_branches
         check_unmerged_response(self, unmerged_branches(request))
+
+if __name__ == '__main__':
+    unittest.main()

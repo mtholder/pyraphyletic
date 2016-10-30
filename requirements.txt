@@ -1,7 +1,6 @@
 markdown
 requests
 celery
-anyjson
 pyramid
 pyramid_chameleon
 pyramid_debugtoolbar

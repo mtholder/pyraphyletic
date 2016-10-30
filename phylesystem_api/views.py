@@ -1,9 +1,9 @@
 from peyotl import get_logger
 from pyramid.view import view_config
 from pyramid.response import Response
-from pyramid.httpexceptions import exception_response, HTTPNotFound
+from pyramid.httpexceptions import (exception_response, HTTPNotFound, HTTPBadRequest)
 import markdown
-import anyjson
+import json
 import bleach
 import copy
 
@@ -33,7 +33,7 @@ def check_api_version(request):
     """Raises a 404 if the version string is not correct and returns the version string"""
     vstr = request.matchdict.get('api_version')
     if vstr not in _API_VERSIONS:
-        raise HTTPNotFound(explanation='API version "{}" is not supported'.format(vstr))
+        raise HTTPNotFound(title='API version "{}" is not supported'.format(vstr))
     return vstr
 
 
@@ -46,7 +46,7 @@ def umbrella_from_request(request):
     rtstr = request.matchdict.get('resource_type')
     key_name = _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY.get(rtstr)
     if key_name is None:
-        raise exception_response(404, explanation='Resource type "{}" is not supported'.format(rtstr))
+        raise HTTPNotFound(title='Resource type "{}" is not supported'.format(rtstr))
     return request.registry.settings[key_name]
 
 
@@ -58,12 +58,22 @@ def doc_id_from_request(request):
         request and the umbrella object as the first 2 arguments"""
     doc_id = request.matchdict.get('doc_id')
     if doc_id is None:
-        raise HTTPNotFound(explanation='Document ID required')
+        raise HTTPNotFound(title='Document ID required')
     return doc_id
 
 
 def umbrella_with_id_from_request(request):
     return umbrella_from_request(request), doc_id_from_request(request)
+
+
+def extract_posted_data(request):
+    if request.POST:
+        return request.POST
+    if request.params:
+        return request.params
+    if request.text:
+        return json.loads(request.text)
+    raise HTTPBadRequest(title="no POSTed data", explanation='No data obtained from POST')
 
 
 @view_config(route_name='home', renderer='json')
@@ -74,14 +84,6 @@ def index(request):
         "documentation_url": "https://github.com/OpenTreeOfLife/phylesystem-api/tree/master/docs"
     }
 
-def extract_posted_data(request):
-    if request.POST:
-        return request.POST
-    if request.params:
-        return request.params
-    if request.text:
-        return anyjson.loads(request.text)
-    raise exception_response(400, 'No data obtained from POST')
 
 @view_config(route_name='render_markdown', request_method='POST')
 def render_markdown(request):
@@ -89,7 +91,7 @@ def render_markdown(request):
     try:
         src = data['src']
     except KeyError:
-        raise exception_response(400, explanation='"src" parameter not found in POST')
+        raise HTTPBadRequest(title='"src" parameter not found in POST')
 
     def add_blank_target(attrs, new=False):
         attrs['target'] = '_blank'
@@ -130,7 +132,7 @@ def external_url_generic_helper(umbrella, doc_id, doc_id_key):
     except:
         msg = 'document {} not found'.format(doc_id)
         _LOG.exception(msg)
-        raise exception_response(404, body=anyjson.dumps({'error': 1, 'description': msg}))
+        raise HTTPNotFound(title=msg, body=json.dumps({'error': 1, 'description': msg}))
 
 
 @view_config(route_name='generic_external_url', renderer='json')
