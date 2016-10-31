@@ -38,13 +38,14 @@ def main(global_config, **settings):
     # Some need a resource_type  like study, amendment, collection
     # And other need version/resource_type
     # So we compose these prefixes here
-    v_prefix = '{api_version:v1|v2|v3}'
+    v_prefix = '{api_version:v1|v2|v3|v4}'
     rt_keys = get_resource_type_to_umbrella_name_copy().keys()
     joined_rt_keys = '|'.join(rt_keys)
     rt_prefix = '{resource_type:' + joined_rt_keys + '}'
     v_rt_prefix = v_prefix + '/' + rt_prefix
 
     # Set up the routes that we anticipate using in v4 and above:
+    config.add_route('versioned_home', v_prefix + '/')
     config.add_route('render_markdown', v_prefix + '/render_markdown')
     config.add_route('generic_config', v_rt_prefix + '/config')
     config.add_route('unmerged_branches', v_rt_prefix + '/unmerged_branches')

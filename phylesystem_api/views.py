@@ -76,6 +76,7 @@ def extract_posted_data(request):
     raise HTTPBadRequest(title="no POSTed data", explanation='No data obtained from POST')
 
 
+@view_config(route_name='versioned_home', renderer='json')
 @view_config(route_name='home', renderer='json')
 def index(request):
     return {
