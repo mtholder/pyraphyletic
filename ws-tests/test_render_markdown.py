@@ -9,7 +9,7 @@ DOMAIN = config('host', 'apihost')
 
 class TestRenderMarkdown(unittest.TestCase):
     def test_render_markdown(self):
-        RM_SUBMIT_URI = DOMAIN + '/phylesystem/render_markdown'
+        RM_SUBMIT_URI = DOMAIN + '/v2/phylesystem/render_markdown'
         r = get_response_from_http(RM_SUBMIT_URI, 'POST', data={'src': render_test_input})
         r.body = r.text
         check_render_markdown_response(self, r)

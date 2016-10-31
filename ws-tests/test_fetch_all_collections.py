@@ -3,7 +3,7 @@ import sys, os
 from opentreetesting import test_http_json_method, config
 DOMAIN = config('host', 'apihost')
 # backwards compat, support "list_all"
-SUBMIT_URI = DOMAIN + '/collections/find_collections'
+SUBMIT_URI = DOMAIN + '/v3/collections/find_collections'
 r = test_http_json_method(SUBMIT_URI,
                           'GET',
                           expected_status=200,
@@ -12,7 +12,7 @@ if not r[0]:
     sys.exit(1)
 full_objs = r[1]
 full_objs_by_id = {i['id']: i for i in full_objs}
-SUBMIT_URI = DOMAIN + '/collections/list'
+SUBMIT_URI = DOMAIN + '/v4/collections/list'
 r = test_http_json_method(SUBMIT_URI,
                           'GET',
                           expected_status=200,

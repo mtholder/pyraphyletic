@@ -9,15 +9,15 @@ DOMAIN = config('host', 'apihost')
 
 class TestStudyListAndConfig(unittest.TestCase):
     def test_study_list_and_config(self):
-        SL_SUBMIT_URI = DOMAIN + '/phylesystem/study_list'
+        SL_SUBMIT_URI = DOMAIN + '/v3/phylesystem/study_list'
         r = test_http_json_method(SL_SUBMIT_URI, 'GET', expected_status=200, return_bool_data=True)
         self.assertTrue(r[0])
         sl = r[1]
-        DEP_SUBMIT_URI = DOMAIN + '/phylesystem/phylesystem_config'
+        DEP_SUBMIT_URI = DOMAIN + '/v3/phylesystem/phylesystem_config'
         r = test_http_json_method(DEP_SUBMIT_URI, 'GET', expected_status=200, return_bool_data=True)
         self.assertTrue(r[0])
         full_config = r[1]
-        GEN_SUBMIT_URI = DOMAIN + '/phylesystem/study/config'
+        GEN_SUBMIT_URI = DOMAIN + '/v4/phylesystem/study/config'
         r = test_http_json_method(GEN_SUBMIT_URI, 'GET', expected_status=200, return_bool_data=True)
         self.assertTrue(r[0])
         gen_config = r[1]

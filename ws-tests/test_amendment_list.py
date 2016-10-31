@@ -3,7 +3,7 @@ import sys, os
 from opentreetesting import test_http_json_method, config
 DOMAIN = config('host', 'apihost')
 # backwards compat, support "list_all"
-SUBMIT_URI = DOMAIN + '/amendments/amendment_list'
+SUBMIT_URI = DOMAIN + '/v3/amendments/amendment_list'
 r = test_http_json_method(SUBMIT_URI,
                           'GET',
                           expected_status=200,
@@ -11,7 +11,7 @@ r = test_http_json_method(SUBMIT_URI,
 if not r[0]:
     sys.exit(1)
 la = r[1]
-SUBMIT_URI = DOMAIN + '/amendments/list'
+SUBMIT_URI = DOMAIN + '/v4/amendments/list'
 r = test_http_json_method(SUBMIT_URI,
                           'GET',
                           expected_status=200,

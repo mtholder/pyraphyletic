@@ -9,7 +9,7 @@ DOMAIN = config('host', 'apihost')
 
 class TestStudyListAndConfig(unittest.TestCase):
     def test_study_list_and_config(self):
-        UB_SUBMIT_URI = DOMAIN + '/study/unmerged_branches'
+        UB_SUBMIT_URI = DOMAIN + '/v4/study/unmerged_branches'
         r = test_http_json_method(UB_SUBMIT_URI, 'GET', expected_status=200, return_bool_data=True)
         self.assertTrue(r[0])
         check_unmerged_response(self, r[1])
