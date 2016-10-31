@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 from peyotl import get_logger
 from peyotl import create_doc_store_wrapper
+import json
+
+from pyramid.httpexceptions import HTTPBadRequest
 
 _LOG = get_logger(__name__)
 _DOC_STORE = None
@@ -24,6 +27,16 @@ def fill_app_settings(settings):
     settings['tree_collections'] = wrapper.tree_collections
 
 
+def err_body(description):
+    err = {'error': 1,
+           'description': description}
+    return json.dumps(err)
+
+
+def raise_http_error_from_msg(msg):
+    raise HTTPBadRequest(body=err_body(msg))
+
+
 '''
 import logging
 import os
@@ -42,14 +55,6 @@ _LOG = logging.getLogger(__name__)
 
 
 
-def err_body(description):
-    err = {'error': 1,
-           'description': description}
-    return anyjson.dumps(err)
-
-
-def raise_http_error_from_msg(msg):
-    raise HTTPBadRequest(body=err_body(msg))
 
 
 def authenticate(**kwargs):

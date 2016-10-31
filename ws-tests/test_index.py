@@ -13,7 +13,7 @@ class TestIndex(unittest.TestCase):
         m = pre_v.match(DOMAIN)
         if m:
             DOMAIN = m.group(1)
-        I_SUBMIT_URI = DOMAIN + '/v4/phylesystem/'
+        I_SUBMIT_URI = DOMAIN + '/v4/'
         r = test_http_json_method(I_SUBMIT_URI, 'GET', expected_status=200, return_bool_data=True)
         self.assertTrue(r[0])
         check_index_response(self, r[1])

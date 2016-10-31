@@ -51,6 +51,7 @@ def main(global_config, **settings):
     config.add_route('unmerged_branches', v_rt_prefix + '/unmerged_branches')
     config.add_route('generic_list', v_rt_prefix + '/list')
     config.add_route('generic_external_url', v_rt_prefix + '/external_url/{doc_id}')
+    config.add_route('get_study_via_id', v_prefix + '/study/{doc_id:[a-z][a-z]_\d+}')
 
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
@@ -60,6 +61,7 @@ def main(global_config, **settings):
     config.add_route('fetch_all_amendments', v_prefix + '/amendments/list_all') #really fetch all+last commit
     config.add_route('fetch_all_collections', v_prefix + '/collections/find_collections') #really fetch all+last commit
 
+
     # config.add_route('options_study', '{api_version}/study')
     # config.add_route('options_study_id', '{api_version}/study/{study_id}')
     # config.add_route('options_generic', '{api_version}/{resourt_type}')
@@ -67,7 +69,6 @@ def main(global_config, **settings):
     skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')
         config.add_route('get_sub_id', vstr + 'study/{study_id}/{subresource}/{subresource_id}')
-        config.add_route('get_study_id', vstr + 'study/{study_id}')
         config.add_route('post_study_id', vstr + 'study/{study_id}')
         config.add_route('post_study', vstr + 'study')
         config.add_route('push_id', vstr + 'push/{study_id}')

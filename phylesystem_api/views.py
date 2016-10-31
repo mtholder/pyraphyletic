@@ -1,11 +1,13 @@
-from peyotl import get_logger
-from pyramid.view import view_config
-from pyramid.response import Response
-from pyramid.httpexceptions import (exception_response, HTTPNotFound, HTTPBadRequest)
-import markdown
-import json
-import bleach
 import copy
+import json
+import traceback
+import bleach
+import markdown
+from peyotl import get_logger
+from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest)
+from pyramid.response import Response
+from pyramid.view import view_config
+from phylesystem_api.util import (err_body, raise_http_error_from_msg)
 
 _LOG = get_logger(__name__)
 
@@ -142,6 +144,130 @@ def external_url(request):
     return external_url_generic_helper(umbrella, doc_id, 'doc_id')
 
 
+def subresource_request(request):
+    """Helper function for get_document. This function should extract a dict of key-values pairs
+    describing what subresource or formatting preferences the request is making.
+    For example, if just a tree is requested from a study, then the
+       'subresource':'tree'
+    will be part of the dict.
+    An empty dict can be returned, if the entire resource with no transformation of schema is requested."""
+    sd = {}
+    x = """valid_subresources = ('tree', 'meta', 'otus', 'otu', 'otumap')
+    returning_full_study = False
+    returning_tree = False
+    content_id = None
+    version_history = None
+    # infer file type from extension
+    type_ext = None
+    last_word_dot_split = request.path.split('/')[-1].split('.')
+    if len(last_word_dot_split) > 1:
+        type_ext = '.' + last_word_dot_split[-1]
+
+    params['type_ext'] = type_ext
+    subresource = params.get('subresource')
+    subresource_id = params.get('subresource_id')
+    if subresource_id and ('.' in subresource_id):
+        subresource_id = subresource_id.split('.')[0]  # could crop ID...
+    if subresource is None:
+        returning_full_study = True
+        if '.' in study_id:
+            study_id = study_id.split('.')[0]
+        _LOG.debug('GET v1/study/{}'.format(study_id))
+        return_type = 'study'
+    elif subresource == 'tree':
+        return_type = 'tree'
+        returning_tree = True
+        content_id = subresource_id
+    elif subresource == 'subtree':
+        subtree_id = params.get('subtree_id')
+        if subtree_id is None:
+            _edescrip = 'subtree resource requires a study_id and tree_id in the URL and a subtree_id parameter'
+            raise HTTPBadRequest(body=err_body(_edescrip))
+        return_type = 'subtree'
+        returning_tree = True
+        content_id = (subresource_id, subtree_id)
+    elif subresource in ['meta', 'otus', 'otu', 'otumap']:
+        if subresource != 'meta':
+            content_id = subresource_id
+        return_type = subresource
+    else:
+        _edescrip = 'subresource requested not in list of valid resources: %s' % ' '.join(valid_subresources)
+        raise HTTPBadRequest(body=err_body(_edescrip))
+    ...
+    out_schema = _validate_output_nexml2json(phylesystem,
+                                             params,
+                                             return_type,
+                                             content_id=content_id)
+    """
+    params = dict(request.params)
+    params.update(dict(request.matchdict))
+    return sd, params
+
+
+"""TO PEYOTL:
+            # should be part of converter...
+            blob_sha = umbrella.get_blob_sha_for_study_id(doc_id, head_sha)
+            umbrella.add_validation_annotation(study_nexson, blob_sha)
+
+transformer:
+            serialize = not out_schema.is_json()
+            src_schema = PhyloSchema('nexson', version=phylesystem.repo_nexml2json)
+            result_data = out_schema.convert(study_nexson,
+                                             serialize=serialize,
+                                             src_schema=src_schema)
+"""
+
+
+@view_config(route_name='get_study_via_id', renderer='json', request_method='GET')
+def get_study_document(request):
+    request.matchdict['resource_type'] = 'study'
+    return get_document(request)
+
+def get_document(request):
+    """OpenTree API methods relating to reading"""
+    valid_resources = ('study',)
+    umbrella, doc_id = umbrella_with_id_from_request(request)
+    subresource_req_dict, params = subresource_request(request)
+    is_plausible, reason_or_converter = umbrella.is_plausible_transformation(subresource_req_dict)
+    if not is_plausible:
+        raise HTTPBadRequest(title='Impossible request: {}'.format(reason_or_converter))
+    transformer = reason_or_converter
+    parent_sha = params.get('starting_commit_SHA')
+    _LOG.debug('parent_sha = {}'.format(parent_sha))
+    # return the correct nexson of study_id, using the specified view
+    try:
+        r = umbrella.return_document(doc_id, commit_sha=parent_sha, return_WIP_map=True)
+    except:
+        _LOG.exception('GET failed')
+        raise HTTPNotFound('Document {i} GET failure'.format(i=doc_id))
+    # noinspection PyBroadException
+    try:
+        document_blob, head_sha, wip_map = r
+    except:
+        _LOG.exception('GET failed')
+        raise_http_error_from_msg(traceback.format_exc())
+    if transformer is None:
+        result_data = document_blob
+    else:
+        try:
+            result_data = transformer(document_blob)
+        except KeyError, x:
+            raise HTTPNotFound(title='subresource not found: {}'.format(x))
+        except:
+            msg = "Exception in coercing to the document to the requested type. "
+            _LOG.exception(msg)
+            raise HTTPBadRequest(body=err_body(msg))
+    if subresource_req_dict['output_is_json']:
+        result = {'sha': head_sha,
+                  'data': result_data,
+                  'branch2sha': wip_map}
+        if params.get('version_history'):
+            result['versionHistory'] = umbrella.get_version_history_for_doc_id(doc_id)
+        return result
+    request.override_renderer = 'string'
+    return Response(body=result_data, content_type='text/plain')
+
+
 
 # TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
 def fetch_all_docs_and_last_commit(docstore):
@@ -163,13 +289,16 @@ def fetch_all_docs_and_last_commit(docstore):
         doc_list.append(props)
     return doc_list
 
+
 @view_config(route_name='fetch_all_amendments', renderer='json')
 def fetch_all_amendments(request):
     return fetch_all_docs_and_last_commit(request.registry.settings['taxon_amendments'])
 
+
 @view_config(route_name='fetch_all_collections', renderer='json')
 def fetch_all_collections(request):
     return fetch_all_docs_and_last_commit(request.registry.settings['tree_collections'])
+
 
 # TODO: deprecate the URLs below here
 # TODO: deprecate in favor of generic_list
@@ -190,6 +319,7 @@ def study_external_url(request):
     phylesystem = request.registry.settings['phylesystem']
     study_id = request.matchdict['study_id']
     return external_url_generic_helper(phylesystem, study_id, 'study_id')
+
 
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='amendment_list', renderer='json')
@@ -213,7 +343,7 @@ def study_options(request, *valist):
     return response
 '''
 '''
-import traceback
+
 import urllib2
 
 import anyjson
