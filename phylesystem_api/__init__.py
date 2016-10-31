@@ -50,7 +50,7 @@ def main(global_config, **settings):
     config.add_route('generic_config', v_rt_prefix + '/config')
     config.add_route('unmerged_branches', v_rt_prefix + '/unmerged_branches')
     config.add_route('generic_list', v_rt_prefix + '/list')
-    config.add_route('generic_external_url', v_rt_prefix + '/external_url')
+    config.add_route('generic_external_url', v_rt_prefix + '/external_url/{doc_id}')
 
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
