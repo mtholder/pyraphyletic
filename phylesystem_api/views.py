@@ -199,8 +199,12 @@ def subresource_request(request):
                                              return_type,
                                              content_id=content_id)
     """
-    params = dict(request.params)
+    params = {}
+    # default behaviors, here. Overloaded by request specific args below
+    params['version_history'] = True
+    params.update(request.params)
     params.update(dict(request.matchdict))
+
     return sd, params
 
 
@@ -223,9 +227,21 @@ def get_study_document(request):
     request.matchdict['resource_type'] = 'study'
     return get_document(request)
 
+@view_config(route_name='get_taxon_amendment_via_id', renderer='json', request_method='GET')
+def get_amendment_document(request):
+    request.matchdict['resource_type'] = 'taxon_amendment'
+    request.matchdict['external_url'] = True
+    return get_document(request)
+
+@view_config(route_name='get_taxon_amendment_via_id', renderer='json', request_method='GET')
+def get_amendment_document(request):
+    request.matchdict['resource_type'] = 'taxon_amendment'
+    request.matchdict['external_url'] = True
+    return get_document(request)
+
 def get_document(request):
     """OpenTree API methods relating to reading"""
-    valid_resources = ('study',)
+    resource_type = request.matchdict['resource_type']
     umbrella, doc_id = umbrella_with_id_from_request(request)
     subresource_req_dict, params = subresource_request(request)
     is_plausible, reason_or_converter = umbrella.is_plausible_transformation(subresource_req_dict)
@@ -239,7 +255,7 @@ def get_document(request):
         r = umbrella.return_document(doc_id, commit_sha=parent_sha, return_WIP_map=True)
     except:
         _LOG.exception('GET failed')
-        raise HTTPNotFound('Document {i} GET failure'.format(i=doc_id))
+        raise HTTPNotFound('{r} document {i} GET failure'.format(r=resource_type, i=doc_id))
     # noinspection PyBroadException
     try:
         document_blob, head_sha, wip_map = r
@@ -260,9 +276,19 @@ def get_document(request):
     if subresource_req_dict['output_is_json']:
         result = {'sha': head_sha,
                   'data': result_data,
-                  'branch2sha': wip_map}
-        if params.get('version_history'):
-            result['versionHistory'] = umbrella.get_version_history_for_doc_id(doc_id)
+                  'branch2sha': wip_map
+                  }
+        try:
+            if params.get('version_history'):
+                result['version_history'] = umbrella.get_version_history_for_doc_id(doc_id)
+                result['versionHistory'] = result['version_history'] # TODO get rid of camelCaseVersion
+        except:
+            _LOG.exception('populating of version_history failed for {}'.format(doc_id))
+        try:
+            if params.get('external_url'):
+                result['external_url'] = umbrella.get_public_url(doc_id)
+        except:
+            _LOG.exception('populating of external_url failed for {}'.format(doc_id))
         return result
     request.override_renderer = 'string'
     return Response(body=result_data, content_type='text/plain')

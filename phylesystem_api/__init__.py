@@ -3,7 +3,8 @@ from pyramid.config import Configurator
 from pyramid.request import Request
 from pyramid.request import Response
 from phylesystem_api.util import fill_app_settings
-
+import logging
+_LOG = logging.getLogger(__name__)
 
 # Adapted from:
 #   http://stackoverflow.com/questions/21107057/pyramid-cors-for-ajax-requests
@@ -27,6 +28,8 @@ def request_factory(environ):
 def main(global_config, **settings):
     """ This function returns a Pyramid WSGI application.
     """
+    _LOG.debug('main running from "{}" and called with "{}"'.format(global_config['here'],
+                                                                    global_config['__file__']))
     from phylesystem_api.views import get_resource_type_to_umbrella_name_copy
     fill_app_settings(settings)
     config = Configurator(settings=settings)
@@ -44,6 +47,15 @@ def main(global_config, **settings):
     rt_prefix = '{resource_type:' + joined_rt_keys + '}'
     v_rt_prefix = v_prefix + '/' + rt_prefix
 
+    # The doc IDs have different regex patterns, so we build a url frag to match each type
+    # these can be used in URLs that are specific to one resource type.
+    phylesystem = settings['phylesystem']
+    taxon_amendments = settings['taxon_amendments']
+    tree_collections = settings['tree_collections']
+    study_id_frag = "{doc_id:" + phylesystem.id_regex.pattern + "}"
+    amendment_id_frag = "{doc_id:" + taxon_amendments.id_regex.pattern + "}"
+    collection_id_frag = "{doc_id:" + tree_collections.id_regex.pattern + "}"
+
     # Set up the routes that we anticipate using in v4 and above:
     config.add_route('versioned_home', v_prefix + '/')
     config.add_route('render_markdown', v_prefix + '/render_markdown')
@@ -51,16 +63,18 @@ def main(global_config, **settings):
     config.add_route('unmerged_branches', v_rt_prefix + '/unmerged_branches')
     config.add_route('generic_list', v_rt_prefix + '/list')
     config.add_route('generic_external_url', v_rt_prefix + '/external_url/{doc_id}')
-    config.add_route('get_study_via_id', v_prefix + '/study/{doc_id:[a-z][a-z]_\d+}')
+    config.add_route('get_study_via_id', v_prefix + '/study/' + study_id_frag)
+    config.add_route('get_taxon_amendment_via_id', v_prefix + '/study/' + amendment_id_frag)
+    config.add_route('get_tree_collection_via_id', v_prefix + '/study/' + collection_id_frag)
 
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
     config.add_route('phylesystem_config', v_prefix + '/phylesystem_config')
     config.add_route('study_external_url', v_prefix + '/external_url/{study_id}')
     config.add_route('amendment_list', v_prefix + '/amendments/amendment_list')
-    config.add_route('fetch_all_amendments', v_prefix + '/amendments/list_all') #really fetch all+last commit
-    config.add_route('fetch_all_collections', v_prefix + '/collections/find_collections') #really fetch all+last commit
-
+    # The next 2 methods are really fetch all+last commit
+    config.add_route('fetch_all_amendments', v_prefix + '/amendments/list_all')
+    config.add_route('fetch_all_collections', v_prefix + '/collections/find_collections')
 
     # config.add_route('options_study', '{api_version}/study')
     # config.add_route('options_study_id', '{api_version}/study/{study_id}')
