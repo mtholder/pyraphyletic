@@ -8,6 +8,7 @@ from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest)
 from pyramid.response import Response
 from pyramid.view import view_config
 from phylesystem_api.util import err_body
+from peyotl import NexsonDocSchema
 
 _LOG = get_logger(__name__)
 
@@ -158,8 +159,11 @@ def subresource_request(request, umbrella):
         * output_is_json: bool default True (may be set to False in umbrella.is_plausible_transformation)
         * output_format: mapping to a dict which can contain any of the following. all absent -> no transformation
                 {'schema': format name or None,
-                          'type_ext': file extension or None
-                          'schema_version': default '0.0.0' or the param['output_nexml2json'], }
+                 'type_ext': file extension or None
+                 'schema_version': default '0.0.0' or the param['output_nexml2json'],
+                 'tip_label': string like 'ot:ottTaxonName' for newick, NEXUS output
+                 bracket_ingroup -> bool
+                }
         * subresource_req_dict['subresource_type'] = string
         * subresource_id = string or (string, string) set of IDs
 
@@ -207,6 +211,10 @@ def subresource_request(request, umbrella):
     if resource_type == 'study':
         subresource_type = params.get('subresource_type')
         out_fmt['schema_version'] = params.get('output_nexml2json', '0.0.0')
+
+        tree_opts = NexsonDocSchema.optional_output_detail_keys
+        for trop in tree_opts:
+            out_fmt[trop] = params.get(trop)
         if subresource_type is not None:
             subresource_req_dict['subresource_type'] = subresource_type
             subresource_id = params.get('subresource_id')

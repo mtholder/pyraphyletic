@@ -11,6 +11,39 @@ r = test_http_json_method(SUBMIT_URI,
 if not r[0]:
     sys.exit(1)
 
+def do_tree_test_get(study_id, tree_id):
+    NEXUS_SUBMIT_URI = DOMAIN + '/v1/study/{}/tree/{}.nex'.format(study_id, tree_id)
+    t = get_response_from_http(NEXUS_SUBMIT_URI, 'GET')
+    nexus = t.content
+    if not nexus.startswith('#NEXUS'):
+        sys.exit('Did not get content starting with #NEXUS')
+    data = {'tip_label': 'ot:ottTaxonName'}
+    NEWICK_SUBMIT_URI = DOMAIN + '/v1/study/{}/tree/{}.tre'.format(study_id, tree_id)
+    r = test_http_json_method(NEWICK_SUBMIT_URI,
+                              'GET',
+                              data=data,
+                              expected_status=200,
+                              return_bool_data=True,
+                              is_json=False)
+    if r[0]:
+        assert r[1].startswith('(')
+        assert '[pre-ingroup-marker]' not in r[1]
+    else:
+        sys.exit(1)
+    data['bracket_ingroup'] = True
+    r = test_http_json_method(NEWICK_SUBMIT_URI,
+                              'GET',
+                              data=data,
+                              expected_status=200,
+                              return_bool_data=True,
+                              is_json=False)
+    if r[0]:
+        assert r[1].startswith('(')
+        assert '[pre-ingroup-marker]' in r[1]
+    else:
+        sys.exit(1)
+
+
 # loop over studies to find one with a tree so we can test the tree_get...
 for study_id in r[1]:
     SUBMIT_URI = DOMAIN + '/v1/study/{}'.format(study_id)
@@ -28,11 +61,7 @@ for study_id in r[1]:
                     tree_id_list = list(trees_group['treeById'].keys())
                     tree_id_list.sort() #to make the test repeatable...
                     tree_id = tree_id_list[0]
-                    TREE_SUBMIT_URI = DOMAIN + '/v1/study/{}/tree/{}.nex'.format(study_id, tree_id)
-                    t = get_response_from_http(TREE_SUBMIT_URI, 'GET')
-                    nexus = t.content
-                    if not nexus.startswith('#NEXUS'):
-                        sys.exit('Did not get content starting with #NEXUS')
+                    do_tree_test_get(study_id, tree_id)
                     sys.exit(0)
     else:
         sys.exit(1)

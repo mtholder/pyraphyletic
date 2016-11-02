@@ -40,7 +40,7 @@ def check_study_list_and_config_response(test_case,
                                          sl_response,
                                          config_response,
                                          from_generic_config):
-    nsis = sum([i['number of studies'] for i in config_response['shards']])
+    nsis = sum([i['number of documents'] for i in config_response['shards']])
     test_case.assertEquals(nsis, len(sl_response))
     test_case.assertEquals(from_generic_config, config_response)
 

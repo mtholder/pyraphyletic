@@ -1,2 +1,15 @@
 test.conf
 .out*txt
+/.out_test_collection_list.py.txt
+/.out_test_fetch_all_collections.py.txt
+/.out_test_collection_get_404.py.txt
+/.out_test_study_list_and_config.py.txt
+/.out_test_study_list.py.txt
+/.out_test_amendment_get_404.py.txt
+/.out_test_render_markdown.py.txt
+/.out_test_unmerged.py.txt
+/.out_test_external_url.py.txt
+/.out_test_index.py.txt
+/.out_test_amendment_list.py.txt
+/.out_test_study_get.py.txt
+/.out_test_api_root.py.txt
