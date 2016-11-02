@@ -221,33 +221,6 @@ def subresource_request(request, umbrella):
 
 
 """
-_validate_output_nexml2json(phylesystem,
-                                             params,
-                                             return_type,
-                                             content_id=content_id)
-def _validate_output_nexml2json(phylesystem, params, resource, content_id=None):
-    msg = None
-    if 'output_nexml2json' not in params:
-
-    try:
-        schema = PhyloSchema(schema=params.get('format'),
-                             content=resource,
-                             content_id=content_id,
-                             repo_nexml2json=phylesystem.repo_nexml2json,
-                             **params)
-        if not schema.can_convert_from(resource):
-            msg = 'Cannot convert from {s} to {d}'.format(s=phylesystem.repo_nexml2json,
-                                                          d=schema.description)
-    except ValueError, x:
-        msg = str(x)
-        _LOG.exception('GET failing: {m}'.format(m=msg))
-
-    if msg:
-        _LOG.debug('output sniffing err msg = ' + msg)
-        raise HTTPBadRequest(body=err_body(msg))
-    return schema
-
-    return subresource_req_dict, culled_params
 
 
 TO PEYOTL:

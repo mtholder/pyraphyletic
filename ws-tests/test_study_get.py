@@ -19,6 +19,8 @@ for study_id in r[1]:
     if r[0]:
         nexm_el = r[1]['data']['nexml']
         tree_group_coll_el = nexm_el.get('treesById')
+        import json
+        print json.dumps(nexm_el, indent=2)
         if tree_group_coll_el:
             for trees_group_id, trees_group in tree_group_coll_el.items():
                 if trees_group and trees_group.get('treeById'):
@@ -29,4 +31,5 @@ for study_id in r[1]:
                     t = get_response_from_http(TREE_SUBMIT_URI, 'GET')
                     print(t)
                     sys.exit(0)
-    sys.exit(1)
+    else:
+        sys.exit(1)
