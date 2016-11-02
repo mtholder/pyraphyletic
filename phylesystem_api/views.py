@@ -194,7 +194,8 @@ def subresource_request(request, umbrella):
     culled_params['starting_commit_SHA'] = params.get('starting_commit_SHA')
     resource_type = params['resource_type']
     culled_params['resource_type'] = resource_type
-    last_word_dot_split = request.path.split('/')[-1].split('.')
+    last_word = request.path.split('/')[-1]
+    last_word_dot_split = last_word.split('.')
     last_word_was_doc_id = True
     type_ext = None
     if len(last_word_dot_split) > 1:
@@ -223,7 +224,7 @@ def subresource_request(request, umbrella):
                 subresource_req_dict['subresource_id'] = (subresource_id, subtree_id)
     # if we get {resource_type}/ot_1424.json we want to treat ot_1424 as the ID
     if (len(last_word_dot_split) > 1) and last_word_was_doc_id:
-        if last_word_dot_split == doc_id:
+        if last_word == doc_id:
             culled_params['doc_id'] = '.'.join(last_word_dot_split[:-1])
 
     return subresource_req_dict, culled_params
@@ -248,6 +249,7 @@ transformer:
 
 @view_config(route_name='get_study_subresource_no_id', renderer='json', request_method='GET')
 @view_config(route_name='get_study_subresource_via_id', renderer='json', request_method='GET')
+@view_config(route_name='get_study_via_id_and_ext', renderer='json', request_method='GET')
 @view_config(route_name='get_study_via_id', renderer='json', request_method='GET')
 def get_study_document(request):
     request.matchdict['resource_type'] = 'study'

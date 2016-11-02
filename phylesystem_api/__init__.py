@@ -53,6 +53,7 @@ def main(global_config, **settings):
     taxon_amendments = settings['taxon_amendments']
     tree_collections = settings['tree_collections']
     study_id_frag = "{doc_id:" + phylesystem.id_regex.pattern + "}"
+    study_id_ext_frag = "{doc_id:" + phylesystem.id_regex.pattern + "[.][a-z]+}"
     amendment_id_frag = "{doc_id:" + taxon_amendments.id_regex.pattern + "}"
     collection_id_frag = "{doc_id:" + tree_collections.id_regex.pattern + "}"
 
@@ -64,6 +65,7 @@ def main(global_config, **settings):
     config.add_route('generic_list', v_rt_prefix + '/list')
     config.add_route('generic_external_url', v_rt_prefix + '/external_url/{doc_id}')
     config.add_route('get_study_via_id', v_prefix + '/study/' + study_id_frag)
+    config.add_route('get_study_via_id_and_ext', v_prefix + '/study/' + study_id_ext_frag)
     study_sub_frag = '/{subresource_type:meta|tree|subtree|otus|otu|otumap|file}'
     config.add_route('get_study_subresource_no_id', v_prefix + '/study/' + study_id_frag + study_sub_frag)
     config.add_route('get_study_subresource_via_id', v_prefix + '/study/' + study_id_frag + study_sub_frag + '/{subresource_id}')
