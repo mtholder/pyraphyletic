@@ -226,7 +226,6 @@ def subresource_request(request, umbrella):
     if (len(last_word_dot_split) > 1) and last_word_was_doc_id:
         if last_word == doc_id:
             culled_params['doc_id'] = '.'.join(last_word_dot_split[:-1])
-
     return subresource_req_dict, culled_params
 
 
