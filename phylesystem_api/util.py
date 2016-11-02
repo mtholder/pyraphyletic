@@ -33,8 +33,6 @@ def err_body(description):
     return json.dumps(err)
 
 
-def raise_http_error_from_msg(msg):
-    raise HTTPBadRequest(body=err_body(msg))
 
 
 '''

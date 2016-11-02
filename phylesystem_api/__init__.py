@@ -64,6 +64,10 @@ def main(global_config, **settings):
     config.add_route('generic_list', v_rt_prefix + '/list')
     config.add_route('generic_external_url', v_rt_prefix + '/external_url/{doc_id}')
     config.add_route('get_study_via_id', v_prefix + '/study/' + study_id_frag)
+    study_sub_frag = '/{subresource_type:meta|tree|subtree|otus|otu|otumap|file}'
+    config.add_route('get_study_subresource_no_id', v_prefix + '/study/' + study_id_frag + study_sub_frag)
+    config.add_route('get_study_subresource_via_id', v_prefix + '/study/' + study_id_frag + study_sub_frag + '/{subresource_id}')
+
     config.add_route('get_taxon_amendment_via_id', v_prefix + '/study/' + amendment_id_frag)
     config.add_route('get_tree_collection_via_id', v_prefix + '/study/' + collection_id_frag)
 

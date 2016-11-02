@@ -7,7 +7,7 @@ from peyotl import get_logger
 from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest)
 from pyramid.response import Response
 from pyramid.view import view_config
-from phylesystem_api.util import (err_body, raise_http_error_from_msg)
+from phylesystem_api.util import err_body
 
 _LOG = get_logger(__name__)
 
@@ -48,7 +48,7 @@ def umbrella_from_request(request):
     rtstr = request.matchdict.get('resource_type')
     key_name = _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY.get(rtstr)
     if key_name is None:
-        raise HTTPNotFound(title='Resource type "{}" is not supported'.format(rtstr))
+        raise HTTPNotFound(body='Resource type "{}" is not supported'.format(rtstr))
     return request.registry.settings[key_name]
 
 
@@ -60,7 +60,7 @@ def doc_id_from_request(request):
         request and the umbrella object as the first 2 arguments"""
     doc_id = request.matchdict.get('doc_id')
     if doc_id is None:
-        raise HTTPNotFound(title='Document ID required')
+        raise HTTPNotFound(body='Document ID required')
     return doc_id
 
 
@@ -75,7 +75,7 @@ def extract_posted_data(request):
         return request.params
     if request.text:
         return json.loads(request.text)
-    raise HTTPBadRequest(title="no POSTed data", explanation='No data obtained from POST')
+    raise HTTPBadRequest(body="no POSTed data", explanation='No data obtained from POST')
 
 
 @view_config(route_name='versioned_home', renderer='json')
@@ -94,7 +94,7 @@ def render_markdown(request):
     try:
         src = data['src']
     except KeyError:
-        raise HTTPBadRequest(title='"src" parameter not found in POST')
+        raise HTTPBadRequest(body='"src" parameter not found in POST')
 
     def add_blank_target(attrs, new=False):
         attrs['target'] = '_blank'
@@ -144,71 +144,113 @@ def external_url(request):
     return external_url_generic_helper(umbrella, doc_id, 'doc_id')
 
 
-def subresource_request(request):
-    """Helper function for get_document. This function should extract a dict of key-values pairs
-    describing what subresource or formatting preferences the request is making.
-    For example, if just a tree is requested from a study, then the
-       'subresource':'tree'
-    will be part of the dict.
-    An empty dict can be returned, if the entire resource with no transformation of schema is requested."""
-    sd = {}
-    x = """valid_subresources = ('tree', 'meta', 'otus', 'otu', 'otumap')
-    returning_full_study = False
-    returning_tree = False
-    content_id = None
-    version_history = None
-    # infer file type from extension
-    type_ext = None
+def subresource_request(request, umbrella):
+    """Helper function for get_document separates params into output and input dicts
+
+    This function composes a pair of dicts:
+        the first (subresource_req_dict) is the argument to umbrella.is_plausible_transformation
+        the second (culled_params) is set of input specification details.
+
+    The goal is to adapt the peculiarities of the URL/http data into a more
+    standardized set of dict.
+
+    On output, subresource_req_dict can have:
+        * output_is_json: bool default True (may be set to False in umbrella.is_plausible_transformation)
+        * output_format: mapping to a dict which can contain any of the following. all absent -> no transformation
+                {'schema': format name or None,
+                          'type_ext': file extension or None
+                          'schema_version': default '0.0.0' or the param['output_nexml2json'], }
+        * subresource_req_dict['subresource_type'] = string
+        * subresource_id = string or (string, string) set of IDs
+
+    culled_params holds two fields describing the core input:
+        * resource_type -> ['study', 'taxon_amendments', 'tree_collections', ...]
+        * doc_id -> string, ID of top-level document
+    and the following option specifiers
+        * version_history -> bool, True to include versionHistory in response
+        * external_url -> bool, True to include external_url in response
+        * starting_commit_SHA -> string or None
+    """
+
+    subresource_req_dict = {}
+    culled_params = {}
+    # default behaviors, here. Overloaded by request specific args below
+    params = {'version_history': True}
+    params.update(request.params)
+    params.update(dict(request.matchdict))
+    doc_id = params['doc_id']
+    culled_params['doc_id'] = doc_id
+    culled_params['version_history'] = params['version_history']
+    culled_params['external_url'] = params.get('external_url', False)
+    culled_params['starting_commit_SHA'] = params.get('starting_commit_SHA')
+    resource_type = params['resource_type']
+    culled_params['resource_type'] = resource_type
     last_word_dot_split = request.path.split('/')[-1].split('.')
+    last_word_was_doc_id = True
+    type_ext = None
     if len(last_word_dot_split) > 1:
         type_ext = '.' + last_word_dot_split[-1]
+    explicit_format = params.get('format')
+    out_fmt = {'schema': explicit_format,
+               'type_ext': type_ext}
+    subresource_req_dict['output_format'] = out_fmt
+    if resource_type == 'study':
+        subresource_type = params.get('subresource_type')
+        out_fmt['schema_version'] = params.get('output_nexml2json', '0.0.0')
+        if subresource_type is not None:
+            subresource_req_dict['subresource_type'] = subresource_type
+            subresource_id = params.get('subresource_id')
+            if subresource_id is not None:
+                last_word_was_doc_id = False
+                if '.' in subresource_id:
+                    subresource_id = '.'.join(subresource_id.split('.')[:-1])
+                subresource_req_dict['subresource_id'] = subresource_id
+            # subtrees need (tree_id, subtree_id) as their "subresource_id"
+            if subresource_type == 'subtree':
+                subtree_id = params.get('subtree_id')
+                if (subtree_id is None) or (subresource_id is None):
+                    _edescrip = 'subtree resource requires a study_id and tree_id in the URL and a subtree_id parameter'
+                    raise HTTPBadRequest(body=err_body(_edescrip))
+                subresource_req_dict['subresource_id'] = (subresource_id, subtree_id)
+    # if we get {resource_type}/ot_1424.json we want to treat ot_1424 as the ID
+    if (len(last_word_dot_split) > 1) and last_word_was_doc_id:
+        if last_word_dot_split == doc_id:
+            culled_params['doc_id'] = '.'.join(last_word_dot_split[:-1])
 
-    params['type_ext'] = type_ext
-    subresource = params.get('subresource')
-    subresource_id = params.get('subresource_id')
-    if subresource_id and ('.' in subresource_id):
-        subresource_id = subresource_id.split('.')[0]  # could crop ID...
-    if subresource is None:
-        returning_full_study = True
-        if '.' in study_id:
-            study_id = study_id.split('.')[0]
-        _LOG.debug('GET v1/study/{}'.format(study_id))
-        return_type = 'study'
-    elif subresource == 'tree':
-        return_type = 'tree'
-        returning_tree = True
-        content_id = subresource_id
-    elif subresource == 'subtree':
-        subtree_id = params.get('subtree_id')
-        if subtree_id is None:
-            _edescrip = 'subtree resource requires a study_id and tree_id in the URL and a subtree_id parameter'
-            raise HTTPBadRequest(body=err_body(_edescrip))
-        return_type = 'subtree'
-        returning_tree = True
-        content_id = (subresource_id, subtree_id)
-    elif subresource in ['meta', 'otus', 'otu', 'otumap']:
-        if subresource != 'meta':
-            content_id = subresource_id
-        return_type = subresource
-    else:
-        _edescrip = 'subresource requested not in list of valid resources: %s' % ' '.join(valid_subresources)
-        raise HTTPBadRequest(body=err_body(_edescrip))
-    ...
-    out_schema = _validate_output_nexml2json(phylesystem,
+    return subresource_req_dict, culled_params
+
+
+"""
+_validate_output_nexml2json(phylesystem,
                                              params,
                                              return_type,
                                              content_id=content_id)
-    """
-    params = {}
-    # default behaviors, here. Overloaded by request specific args below
-    params['version_history'] = True
-    params.update(request.params)
-    params.update(dict(request.matchdict))
+def _validate_output_nexml2json(phylesystem, params, resource, content_id=None):
+    msg = None
+    if 'output_nexml2json' not in params:
 
-    return sd, params
+    try:
+        schema = PhyloSchema(schema=params.get('format'),
+                             content=resource,
+                             content_id=content_id,
+                             repo_nexml2json=phylesystem.repo_nexml2json,
+                             **params)
+        if not schema.can_convert_from(resource):
+            msg = 'Cannot convert from {s} to {d}'.format(s=phylesystem.repo_nexml2json,
+                                                          d=schema.description)
+    except ValueError, x:
+        msg = str(x)
+        _LOG.exception('GET failing: {m}'.format(m=msg))
+
+    if msg:
+        _LOG.debug('output sniffing err msg = ' + msg)
+        raise HTTPBadRequest(body=err_body(msg))
+    return schema
+
+    return subresource_req_dict, culled_params
 
 
-"""TO PEYOTL:
+TO PEYOTL:
             # should be part of converter...
             blob_sha = umbrella.get_blob_sha_for_study_id(doc_id, head_sha)
             umbrella.add_validation_annotation(study_nexson, blob_sha)
@@ -222,37 +264,48 @@ transformer:
 """
 
 
+@view_config(route_name='get_study_subresource_no_id', renderer='json', request_method='GET')
+@view_config(route_name='get_study_subresource_via_id', renderer='json', request_method='GET')
 @view_config(route_name='get_study_via_id', renderer='json', request_method='GET')
 def get_study_document(request):
     request.matchdict['resource_type'] = 'study'
     return get_document(request)
 
-@view_config(route_name='get_taxon_amendment_via_id', renderer='json', request_method='GET')
-def get_amendment_document(request):
-    request.matchdict['resource_type'] = 'taxon_amendment'
-    request.matchdict['external_url'] = True
-    return get_document(request)
 
 @view_config(route_name='get_taxon_amendment_via_id', renderer='json', request_method='GET')
 def get_amendment_document(request):
-    request.matchdict['resource_type'] = 'taxon_amendment'
+    request.matchdict['resource_type'] = 'taxon_amendments'
     request.matchdict['external_url'] = True
     return get_document(request)
+
+
+@view_config(route_name='get_tree_collection_via_id', renderer='json', request_method='GET')
+def get_amendment_document(request):
+    request.matchdict['resource_type'] = 'tree_collections'
+    request.matchdict['external_url'] = True
+    return get_document(request)
+
 
 def get_document(request):
     """OpenTree API methods relating to reading"""
     resource_type = request.matchdict['resource_type']
-    umbrella, doc_id = umbrella_with_id_from_request(request)
-    subresource_req_dict, params = subresource_request(request)
-    is_plausible, reason_or_converter = umbrella.is_plausible_transformation(subresource_req_dict)
+    umbrella = umbrella_from_request(request)
+    subresource_req_dict, params = subresource_request(request, umbrella)
+    doc_id = params['doc_id']
+    is_plausible, reason_or_converter, out_syntax = umbrella.is_plausible_transformation(subresource_req_dict)
     if not is_plausible:
-        raise HTTPBadRequest(title='Impossible request: {}'.format(reason_or_converter))
+        raise HTTPBadRequest(body='Impossible request: {}'.format(reason_or_converter))
     transformer = reason_or_converter
     parent_sha = params.get('starting_commit_SHA')
     _LOG.debug('parent_sha = {}'.format(parent_sha))
-    # return the correct nexson of study_id, using the specified view
+    version_history = None
     try:
-        r = umbrella.return_document(doc_id, commit_sha=parent_sha, return_WIP_map=True)
+        if (out_syntax == 'JSON') and params['version_history']:
+            r, version_history = umbrella.return_document_and_history(doc_id,
+                                                                      commit_sha=parent_sha,
+                                                                      return_WIP_map=True)
+        else:
+            r = umbrella.return_document(doc_id, commit_sha=parent_sha, return_WIP_map=True)
     except:
         _LOG.exception('GET failed')
         raise HTTPNotFound('{r} document {i} GET failure'.format(r=resource_type, i=doc_id))
@@ -261,27 +314,29 @@ def get_document(request):
         document_blob, head_sha, wip_map = r
     except:
         _LOG.exception('GET failed')
-        raise_http_error_from_msg(traceback.format_exc())
+        raise HTTPBadRequest(body=err_body(traceback.format_exc()))
     if transformer is None:
         result_data = document_blob
     else:
         try:
             result_data = transformer(document_blob)
         except KeyError, x:
-            raise HTTPNotFound(title='subresource not found: {}'.format(x))
+            raise HTTPNotFound(body='subresource not found: {}'.format(x))
+        except ValueError, y:
+            raise HTTPBadRequest(body='subresource not found: {}'.format(y.message))
         except:
             msg = "Exception in coercing to the document to the requested type. "
             _LOG.exception(msg)
             raise HTTPBadRequest(body=err_body(msg))
-    if subresource_req_dict['output_is_json']:
+    if out_syntax == 'JSON':
         result = {'sha': head_sha,
                   'data': result_data,
                   'branch2sha': wip_map
                   }
         try:
-            if params.get('version_history'):
-                result['version_history'] = umbrella.get_version_history_for_doc_id(doc_id)
-                result['versionHistory'] = result['version_history'] # TODO get rid of camelCaseVersion
+            if version_history is not None:
+                result['version_history'] = version_history
+                result['versionHistory'] = result['version_history']  # TODO get rid of camelCaseVersion
         except:
             _LOG.exception('populating of version_history failed for {}'.format(doc_id))
         try:
@@ -292,7 +347,6 @@ def get_document(request):
         return result
     request.override_renderer = 'string'
     return Response(body=result_data, content_type='text/plain')
-
 
 
 # TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
@@ -889,27 +943,6 @@ def _harvest_study_ids_from_paths(path_list, target_array):
             target_array.append(study_id)
 
 
-def _validate_output_nexml2json(phylesystem, params, resource, content_id=None):
-    msg = None
-    if 'output_nexml2json' not in params:
-        params['output_nexml2json'] = '0.0.0'
-    try:
-        schema = PhyloSchema(schema=params.get('format'),
-                             content=resource,
-                             content_id=content_id,
-                             repo_nexml2json=phylesystem.repo_nexml2json,
-                             **params)
-        if not schema.can_convert_from(resource):
-            msg = 'Cannot convert from {s} to {d}'.format(s=phylesystem.repo_nexml2json,
-                                                          d=schema.description)
-    except ValueError, x:
-        msg = str(x)
-        _LOG.exception('GET failing: {m}'.format(m=msg))
-
-    if msg:
-        _LOG.debug('output sniffing err msg = ' + msg)
-        raise HTTPBadRequest(body=err_body(msg))
-    return schema
 
 
 def _extract_and_validate_nexson(request, repo_nexml2json, kwargs):
