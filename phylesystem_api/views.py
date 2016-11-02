@@ -178,6 +178,15 @@ def subresource_request(request, umbrella):
     params = {'version_history': True}
     params.update(request.params)
     params.update(dict(request.matchdict))
+    try:
+        b = request.json_body
+        _LOG.debug('request.json_body={}'.format(b))
+        params.update(b)
+    except:
+        pass
+    _LOG.debug('request.params={}'.format(request.params))
+    _LOG.debug('request.matchdict={}'.format(request.matchdict))
+    _LOG.debug('params={}'.format(params))
     doc_id = params['doc_id']
     culled_params['doc_id'] = doc_id
     culled_params['version_history'] = params['version_history']

@@ -14,13 +14,14 @@ if not r[0]:
 # loop over studies to find one with a tree so we can test the tree_get...
 for study_id in r[1]:
     SUBMIT_URI = DOMAIN + '/v1/study/{}'.format(study_id)
-    data = {'output_nexml2json':'1.2'}
+    data = {'output_nexml2json':'1.2.1'}
     r = test_http_json_method(SUBMIT_URI, 'GET', data=data, expected_status=200, return_bool_data=True)
     if r[0]:
         nexm_el = r[1]['data']['nexml']
+        if nexm_el["@nexml2json"] != "1.2.1":
+            msg = 'requested conversion to NexSON format not performed.  nexml_el["@nexml2json"] = {}\n'
+            sys.exit(msg.format(nexm_el["@nexml2json"]))
         tree_group_coll_el = nexm_el.get('treesById')
-        import json
-        print json.dumps(nexm_el, indent=2)
         if tree_group_coll_el:
             for trees_group_id, trees_group in tree_group_coll_el.items():
                 if trees_group and trees_group.get('treeById'):
@@ -29,7 +30,9 @@ for study_id in r[1]:
                     tree_id = tree_id_list[0]
                     TREE_SUBMIT_URI = DOMAIN + '/v1/study/{}/tree/{}.nex'.format(study_id, tree_id)
                     t = get_response_from_http(TREE_SUBMIT_URI, 'GET')
-                    print(t)
+                    nexus = t.content
+                    if not nexus.startswith('#NEXUS'):
+                        sys.exit('Did not get content starting with #NEXUS')
                     sys.exit(0)
     else:
         sys.exit(1)
