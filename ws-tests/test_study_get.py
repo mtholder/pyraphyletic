@@ -47,6 +47,10 @@ def do_tree_test_get(study_id, tree_id):
 # loop over studies to find one with a tree so we can test the tree_get...
 for study_id in r[1]:
     SUBMIT_URI = DOMAIN + '/v1/study/{}'.format(study_id)
+    # a bogus value for nexml2json should give us a 400
+    data = {'output_nexml2json': 'x1.2.1'}
+    test_http_json_method(SUBMIT_URI, 'GET', data=data, expected_status=400)
+
     data = {'output_nexml2json':'1.2.1'}
     r = test_http_json_method(SUBMIT_URI, 'GET', data=data, expected_status=200, return_bool_data=True)
     if r[0]:
