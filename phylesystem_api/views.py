@@ -211,7 +211,6 @@ def subresource_request(request, umbrella):
     if resource_type == 'study':
         subresource_type = params.get('subresource_type')
         out_fmt['schema_version'] = params.get('output_nexml2json', '0.0.0')
-
         tree_opts = NexsonDocSchema.optional_output_detail_keys
         for trop in tree_opts:
             out_fmt[trop] = params.get(trop)
@@ -310,7 +309,7 @@ def get_document(request):
         result_data = document_blob
     else:
         try:
-            result_data = transformer(document_blob)
+            result_data = transformer(umbrella, doc_id, document_blob, head_sha)
         except KeyError, x:
             raise HTTPNotFound(body='subresource not found: {}'.format(x))
         except ValueError, y:

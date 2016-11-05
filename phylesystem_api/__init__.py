@@ -4,7 +4,9 @@ from pyramid.request import Request
 from pyramid.request import Response
 from phylesystem_api.util import fill_app_settings
 import logging
+
 _LOG = logging.getLogger(__name__)
+
 
 # Adapted from:
 #   http://stackoverflow.com/questions/21107057/pyramid-cors-for-ajax-requests
@@ -68,7 +70,8 @@ def main(global_config, **settings):
     config.add_route('get_study_via_id_and_ext', v_prefix + '/study/' + study_id_ext_frag)
     study_sub_frag = '/{subresource_type:meta|tree|subtree|otus|otu|otumap|file}'
     config.add_route('get_study_subresource_no_id', v_prefix + '/study/' + study_id_frag + study_sub_frag)
-    config.add_route('get_study_subresource_via_id', v_prefix + '/study/' + study_id_frag + study_sub_frag + '/{subresource_id}')
+    config.add_route('get_study_subresource_via_id',
+                     v_prefix + '/study/' + study_id_frag + study_sub_frag + '/{subresource_id}')
 
     config.add_route('get_taxon_amendment_via_id', v_prefix + '/study/' + amendment_id_frag)
     config.add_route('get_tree_collection_via_id', v_prefix + '/study/' + collection_id_frag)
