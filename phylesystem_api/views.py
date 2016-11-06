@@ -175,7 +175,6 @@ def subresource_request(request, umbrella):
         * external_url -> bool, True to include external_url in response
         * starting_commit_SHA -> string or None
     """
-
     subresource_req_dict = {}
     culled_params = {}
     # default behaviors, here. Overloaded by request specific args below
@@ -235,24 +234,6 @@ def subresource_request(request, umbrella):
             culled_params['doc_id'] = '.'.join(last_word_dot_split[:-1])
     return subresource_req_dict, culled_params
 
-
-"""
-
-
-TO PEYOTL:
-            # should be part of converter...
-            blob_sha = umbrella.get_blob_sha_for_study_id(doc_id, head_sha)
-            umbrella.add_validation_annotation(study_nexson, blob_sha)
-
-transformer:
-            serialize = not out_schema.is_json()
-            src_schema = PhyloSchema('nexson', version=phylesystem.repo_nexml2json)
-            result_data = out_schema.convert(study_nexson,
-                                             serialize=serialize,
-                                             src_schema=src_schema)
-"""
-
-
 @view_config(route_name='get_study_subresource_no_id', renderer='json', request_method='GET')
 @view_config(route_name='get_study_subresource_via_id', renderer='json', request_method='GET')
 @view_config(route_name='get_study_via_id_and_ext', renderer='json', request_method='GET')
@@ -282,7 +263,8 @@ def get_document(request):
     umbrella = umbrella_from_request(request)
     subresource_req_dict, params = subresource_request(request, umbrella)
     doc_id = params['doc_id']
-    is_plausible, reason_or_converter, out_syntax = umbrella.is_plausible_transformation(subresource_req_dict)
+    triple = umbrella.is_plausible_transformation(subresource_req_dict)
+    is_plausible, reason_or_converter, out_syntax = triple
     if not is_plausible:
         raise HTTPBadRequest(body='Impossible request: {}'.format(reason_or_converter))
     transformer = reason_or_converter
@@ -318,11 +300,17 @@ def get_document(request):
             msg = "Exception in coercing to the document to the requested type. "
             _LOG.exception(msg)
             raise HTTPBadRequest(body=err_body(msg))
-    if out_syntax == 'JSON':
+    if subresource_req_dict['output_is_json']:
         result = {'sha': head_sha,
                   'data': result_data,
-                  'branch2sha': wip_map
+                  'branch2sha': wip_map,
+                  'url': request.url,
                   }
+        try:
+            comment_html = render_markdown(umbrella.get_markdown_comment(result_data))
+        except:
+            comment_html = ''
+        result['commentHTML'] = comment_html
         try:
             if version_history is not None:
                 result['version_history'] = version_history
