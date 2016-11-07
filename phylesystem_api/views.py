@@ -175,7 +175,7 @@ def subresource_request(request, umbrella):
         * external_url -> bool, True to include external_url in response
         * starting_commit_SHA -> string or None
     """
-    subresource_req_dict = {}
+    subresource_req_dict = {'output_is_json':True}
     culled_params = {}
     # default behaviors, here. Overloaded by request specific args below
     params = {'version_history': True}
@@ -251,9 +251,11 @@ def get_amendment_document(request):
 
 
 @view_config(route_name='get_tree_collection_via_id', renderer='json', request_method='GET')
-def get_amendment_document(request):
+def get_collection_document(request):
     request.matchdict['resource_type'] = 'tree_collections'
     request.matchdict['external_url'] = True
+    u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
+    request.matchdict['doc_id'] = '/'.join(u_c)
     return get_document(request)
 
 
@@ -421,107 +423,6 @@ from phylesystem_api.util import err_body, \
     new_nexson_with_crossref_metadata, \
     OTISearch
 
-
-
-@view_config(route_name='get_sub', renderer='json', request_method='GET')
-@view_config(route_name='get_sub_id', renderer='json', request_method='GET')
-@view_config(route_name='get_study_id', renderer='json', request_method='GET')
-def get_study(request):
-    """OpenTree API methods relating to reading"""
-    valid_resources = ('study',)
-    params = dict(request.params)
-    params.update(dict(request.matchdict))
-    study_id = request.matchdict['study_id']
-    valid_subresources = ('tree', 'meta', 'otus', 'otu', 'otumap')
-    returning_full_study = False
-    returning_tree = False
-    content_id = None
-    version_history = None
-    # infer file type from extension
-    type_ext = None
-    last_word_dot_split = request.path.split('/')[-1].split('.')
-    if len(last_word_dot_split) > 1:
-        type_ext = '.' + last_word_dot_split[-1]
-
-    params['type_ext'] = type_ext
-    subresource = params.get('subresource')
-    subresource_id = params.get('subresource_id')
-    if subresource_id and ('.' in subresource_id):
-        subresource_id = subresource_id.split('.')[0]  # could crop ID...
-    if subresource is None:
-        returning_full_study = True
-        if '.' in study_id:
-            study_id = study_id.split('.')[0]
-        _LOG.debug('GET v1/study/{}'.format(study_id))
-        return_type = 'study'
-    elif subresource == 'tree':
-        return_type = 'tree'
-        returning_tree = True
-        content_id = subresource_id
-    elif subresource == 'subtree':
-        subtree_id = params.get('subtree_id')
-        if subtree_id is None:
-            _edescrip = 'subtree resource requires a study_id and tree_id in the URL and a subtree_id parameter'
-            raise HTTPBadRequest(body=err_body(_edescrip))
-        return_type = 'subtree'
-        returning_tree = True
-        content_id = (subresource_id, subtree_id)
-    elif subresource in ['meta', 'otus', 'otu', 'otumap']:
-        if subresource != 'meta':
-            content_id = subresource_id
-        return_type = subresource
-    else:
-        _edescrip = 'subresource requested not in list of valid resources: %s' % ' '.join(valid_subresources)
-        raise HTTPBadRequest(body=err_body(_edescrip))
-    phylesystem = request.registry.settings['phylesystem']
-    out_schema = _validate_output_nexml2json(phylesystem,
-                                             params,
-                                             return_type,
-                                             content_id=content_id)
-    parent_sha = params.get('starting_commit_SHA')
-
-    _LOG.debug('parent_sha = {}'.format(parent_sha))
-    # return the correct nexson of study_id, using the specified view
-    try:
-        r = phylesystem.return_study(study_id, commit_sha=parent_sha, return_WIP_map=True)
-    except:
-        _LOG.exception('GET failed')
-        raise HTTPNotFound('Study #{i} GET failure'.format(i=study_id))
-    try:
-        study_nexson, head_sha, wip_map = r
-        if returning_full_study:
-            blob_sha = phylesystem.get_blob_sha_for_study_id(study_id, head_sha)
-            phylesystem.add_validation_annotation(study_nexson, blob_sha)
-            version_history = phylesystem.get_version_history_for_study_id(study_id)
-    except:
-        _LOG.exception('GET failed')
-        raise_http_error_from_msg(traceback.format_exc())
-    if out_schema.format_str == 'nexson' and out_schema.version == phylesystem.repo_nexml2json:
-        result_data = study_nexson
-    else:
-        try:
-            serialize = not out_schema.is_json()
-            src_schema = PhyloSchema('nexson', version=phylesystem.repo_nexml2json)
-            result_data = out_schema.convert(study_nexson,
-                                             serialize=serialize,
-                                             src_schema=src_schema)
-        except:
-            msg = "Exception in coercing to the required NexSON version for validation. "
-            _LOG.exception(msg)
-            raise HTTPBadRequest(body=err_body(msg))
-    if not result_data:
-        msg = 'subresource "{r}/{t}" not found in study "{s}"'.format(r=subresource,
-                                                                      t=subresource_id,
-                                                                      s=study_id)
-        raise HTTPNotFound(body=err_body(msg))
-    if returning_full_study and out_schema.is_json():
-        result = {'sha': head_sha,
-                  'data': result_data,
-                  'branch2sha': wip_map}
-        if version_history:
-            result['versionHistory'] = version_history
-        return result
-    return result_data
 
 
 @view_config(route_name='post_study_id', renderer='json', request_method='POST')
@@ -818,7 +719,10 @@ N.B. This depends on a GitHub webhook on the chosen docstore.
     msg = ''
 
     # EXAMPLE of a working curl call to nudge index:
-    # curl -X POST -d '{"urls": ["https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/10/10.json", "https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/9/9.json"]}' -H "Content-type: application/json" http://ec2-54-203-194-13.us-west-2.compute.amazonaws.com/oti/ext/IndexServices/graphdb/indexNexsons
+    # curl -X POST -d '{"urls": ["https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/10/10.json",
+     " https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/9/9.json"]}'
+     -H "Content-type: application/json"
+     http://ec2-54-203-194-13.us-west-2.compute.amazonaws.com/oti/ext/IndexServices/graphdb/indexNexsons
 
     # Pull needed values from config file (typical values shown)
     #   opentree_docstore_url = "https://github.com/OpenTreeOfLife/phylesystem"        # munge this to grab raw NexSON)

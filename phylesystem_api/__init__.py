@@ -57,8 +57,7 @@ def main(global_config, **settings):
     study_id_frag = "{doc_id:" + phylesystem.id_regex.pattern + "}"
     study_id_ext_frag = "{doc_id:" + phylesystem.id_regex.pattern + "[.][a-z]+}"
     amendment_id_frag = "{doc_id:" + taxon_amendments.id_regex.pattern + "}"
-    collection_id_frag = "{doc_id:" + tree_collections.id_regex.pattern + "}"
-
+    collection_id_frag = "{coll_user_id:[a-zA-Z0-9-]+}/{coll_id:[a-zA-Z0-9-]+}"
     # Set up the routes that we anticipate using in v4 and above:
     config.add_route('versioned_home', v_prefix + '/')
     config.add_route('render_markdown', v_prefix + '/render_markdown')
@@ -73,8 +72,8 @@ def main(global_config, **settings):
     config.add_route('get_study_subresource_via_id',
                      v_prefix + '/study/' + study_id_frag + study_sub_frag + '/{subresource_id}')
 
-    config.add_route('get_taxon_amendment_via_id', v_prefix + '/study/' + amendment_id_frag)
-    config.add_route('get_tree_collection_via_id', v_prefix + '/study/' + collection_id_frag)
+    config.add_route('get_taxon_amendment_via_id', v_prefix + '/amendment/' + amendment_id_frag)
+    config.add_route('get_tree_collection_via_id', v_prefix + '/collection/' + collection_id_frag)
 
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
