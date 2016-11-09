@@ -59,21 +59,77 @@ def main(global_config, **settings):
     amendment_id_frag = "{doc_id:" + taxon_amendments.id_regex.pattern + "}"
     collection_id_frag = "{coll_user_id:[a-zA-Z0-9-]+}/{coll_id:[a-zA-Z0-9-]+}"
     # Set up the routes that we anticipate using in v4 and above:
-    config.add_route('versioned_home', v_prefix + '/')
-    config.add_route('render_markdown', v_prefix + '/render_markdown')
-    config.add_route('generic_config', v_rt_prefix + '/config')
-    config.add_route('unmerged_branches', v_rt_prefix + '/unmerged_branches')
-    config.add_route('generic_list', v_rt_prefix + '/list')
-    config.add_route('generic_external_url', v_rt_prefix + '/external_url/{doc_id}')
-    config.add_route('get_study_via_id', v_prefix + '/study/' + study_id_frag)
-    config.add_route('get_study_via_id_and_ext', v_prefix + '/study/' + study_id_ext_frag)
+    config.add_route('versioned_home',
+                     v_prefix + '/',
+                     request_method='GET')
+    config.add_route('render_markdown',
+                     v_prefix + '/render_markdown',
+                     request_method='POST')
+    config.add_route('generic_config',
+                     v_rt_prefix + '/config',
+                     request_method='GET')
+    config.add_route('unmerged_branches',
+                     v_rt_prefix + '/unmerged_branches',
+                     request_method='GET')
+    config.add_route('generic_list',
+                     v_rt_prefix + '/list',
+                     request_method='GET')
+    config.add_route('generic_external_url',
+                     v_rt_prefix + '/external_url/{doc_id}',
+                     request_method='GET')
+    # GET of entire resource
+    config.add_route('get_study_via_id',
+                     v_prefix + '/study/' + study_id_frag,
+                     request_method='GET')
+    config.add_route('get_taxon_amendment_via_id',
+                     v_prefix + '/amendment/' + amendment_id_frag,
+                     request_method='GET')
+    config.add_route('get_tree_collection_via_id',
+                     v_prefix + '/collection/' + collection_id_frag,
+                     request_method='GET')
+    # studies support subsetting the resource w/ a GET
+    config.add_route('get_study_via_id_and_ext',
+                     v_prefix + '/study/' + study_id_ext_frag,
+                     request_method='GET')
     study_sub_frag = '/{subresource_type:meta|tree|subtree|otus|otu|otumap|file}'
-    config.add_route('get_study_subresource_no_id', v_prefix + '/study/' + study_id_frag + study_sub_frag)
+    config.add_route('get_study_subresource_no_id',
+                     v_prefix + '/study/' + study_id_frag + study_sub_frag,
+                     request_method='GET')
     config.add_route('get_study_subresource_via_id',
-                     v_prefix + '/study/' + study_id_frag + study_sub_frag + '/{subresource_id}')
-
-    config.add_route('get_taxon_amendment_via_id', v_prefix + '/amendment/' + amendment_id_frag)
-    config.add_route('get_tree_collection_via_id', v_prefix + '/collection/' + collection_id_frag)
+                     v_prefix + '/study/' + study_id_frag + study_sub_frag + '/{subresource_id}',
+                     request_method='GET')
+    # PUT methods need the doc id
+    config.add_route('put_study_via_id',
+                     v_prefix + '/study/' + study_id_frag,
+                     request_method='PUT')
+    config.add_route('put_taxon_amendment_via_id',
+                     v_prefix + '/amendment/' + amendment_id_frag,
+                     request_method='PUT')
+    config.add_route('put_tree_collection_via_id',
+                     v_prefix + '/collection/' + collection_id_frag,
+                     request_method='PUT')
+    # POST methods don't need the doc id
+    config.add_route('post_study',
+                     v_prefix + '/study/',
+                     request_method='POST')
+    config.add_route('post_taxon_amendment',
+                     v_prefix + '/amendment/',
+                     request_method='POST')
+    config.add_route('post_tree_collection',
+                     v_prefix + '/collection/',
+                     request_method='POST')
+    config.add_route('options_study_id',
+                     v_prefix + '/study/' + study_id_frag,
+                     request_method='OPTIONS')
+    config.add_route('options_taxon_amendment_id',
+                     v_prefix + '/amendment/' + amendment_id_frag,
+                     request_method='OPTIONS')
+    config.add_route('options_tree_collection_id',
+                     v_prefix + '/collection/' + collection_id_frag,
+                     request_method='OPTIONS')
+    config.add_route('options_generic',
+                     v_rt_prefix + '/',
+                     request_method='OPTIONS')
 
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
@@ -84,9 +140,6 @@ def main(global_config, **settings):
     config.add_route('fetch_all_amendments', v_prefix + '/amendments/list_all')
     config.add_route('fetch_all_collections', v_prefix + '/collections/find_collections')
 
-    # config.add_route('options_study', '{api_version}/study')
-    # config.add_route('options_study_id', '{api_version}/study/{study_id}')
-    # config.add_route('options_generic', '{api_version}/{resourt_type}')
 
     skip = '''
         config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')

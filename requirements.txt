@@ -4,5 +4,7 @@ celery
 pyramid
 pyramid_chameleon
 pyramid_debugtoolbar
-waitressmarkdown
+waitress
+markdown
 bleach
+PyGithub>=1.19.0

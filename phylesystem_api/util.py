@@ -55,50 +55,6 @@ _LOG = logging.getLogger(__name__)
 
 
 
-def authenticate(**kwargs):
-    """Verify that we received a valid Github authentication token
-
-    This method takes a dict of keyword arguments and optionally
-    over-rides the author_name and author_email associated with the
-    given token, if they are present.
-
-    Returns a PyGithub object, author name and author email.
-
-    This method will return HTTP 400 if the auth token is not present
-    or if it is not valid, i.e. if PyGithub throws a BadCredentialsException.
-
-    """
-    # this is the GitHub API auth-token for a logged-in curator
-    auth_token = kwargs.get('auth_token', '')
-
-    if not auth_token:
-        raise HTTP(400, json.dumps({
-            "error": 1,
-            "description": "You must provide an auth_token to authenticate to the OpenTree API"
-        }))
-    gh = Github(auth_token)
-    gh_user = gh.get_user()
-    auth_info = {}
-    try:
-        auth_info['login'] = gh_user.login
-    except BadCredentialsException:
-        raise HTTP(400, json.dumps({
-            "error": 1,
-            "description": "You have provided an invalid or expired authentication token"
-        }))
-
-    auth_info['name'] = kwargs.get('author_name')
-    auth_info['email'] = kwargs.get('author_email')
-
-    # use the Github Oauth token to get a name/email if not specified
-    # we don't provide these as default values above because they would
-    # generate API calls regardless of author_name/author_email being specifed
-
-    if auth_info['name'] is None:
-        auth_info['name'] = gh_user.name
-    if auth_info['email'] is None:
-        auth_info['email'] = gh_user.email
-    return auth_info
 
 
 class OTISearch(object):

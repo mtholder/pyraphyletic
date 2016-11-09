@@ -4,11 +4,13 @@ import traceback
 import bleach
 import markdown
 from peyotl import get_logger
-from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest)
+from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPForbidden)
 from pyramid.response import Response
 from pyramid.view import view_config
 from phylesystem_api.util import err_body
-from peyotl import NexsonDocSchema
+from peyotl import NexsonDocSchema, GitWorkflowError
+# noinspection PyPackageRequirements
+from github import Github, BadCredentialsException
 
 _LOG = get_logger(__name__)
 
@@ -23,6 +25,61 @@ _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
                                           'collections': 'tree_collections',
                                           'collection': 'tree_collections',
                                           }
+
+
+def authenticate(write_args):
+    """Verify that we received a valid Github authentication token
+
+    This method takes a dict of keyword arguments and optionally
+    over-rides the author_name and author_email associated with the
+    given token, if they are present.
+
+    Returns a PyGithub object, author name and author email.
+
+    This method will return HTTP 400 if the auth token is not present
+    or if it is not valid, i.e. if PyGithub throws a BadCredentialsException.
+
+    """
+    # this is the GitHub API auth-token for a logged-in curator
+    auth_token = write_args.get('auth_token', '')
+    if not auth_token:
+        raise HTTPForbidden(body="You must provide an auth_token to authenticate to the OpenTree API")
+    gh = Github(auth_token)
+    gh_user = gh.get_user()
+    auth_info = {}
+    try:
+        auth_info['login'] = gh_user.login
+    except BadCredentialsException:
+        raise HTTPForbidden(body="You have provided an invalid or expired authentication token")
+    auth_info['name'] = write_args.get('author_name')
+    auth_info['email'] = write_args.get('author_email')
+    # use the Github Oauth token to get a name/email if not specified
+    # we don't provide these as default values above because they would
+    # generate API calls regardless of author_name/author_email being specifed
+    if auth_info['name'] is None:
+        auth_info['name'] = gh_user.name
+    if auth_info['email'] is None:
+        auth_info['email'] = gh_user.email
+    return auth_info
+
+
+def _extract_json_obj_from_http_call(request, data_kwarg_key, **kwargs):
+    """Returns the JSON object from `kwargs` or the request.body"""
+    try:
+        # check for kwarg 'nexson', or load the full request body
+        if data_kwarg_key in kwargs:
+            json_blob = kwargs.get(data_kwarg_key, {})
+        else:
+            json_blob = request.json_body
+        if not (isinstance(json_blob, dict) or isinstance(json_blob, list)):
+            json_blob = json.loads(json_blob)
+        if data_kwarg_key in json_blob:
+            json_blob = json_blob[data_kwarg_key]
+    except:
+        msg = 'Could not extract JSON argument from {} or body'.format(data_kwarg_key)
+        _LOG.exception(msg)
+        raise HTTPBadRequest(msg)
+    return json_blob
 
 
 def get_resource_type_to_umbrella_name_copy():
@@ -145,7 +202,7 @@ def external_url(request):
     return external_url_generic_helper(umbrella, doc_id, 'doc_id')
 
 
-def subresource_request(request, umbrella):
+def subresource_request(request):
     """Helper function for get_document separates params into output and input dicts
 
     This function composes a pair of dicts:
@@ -175,7 +232,7 @@ def subresource_request(request, umbrella):
         * external_url -> bool, True to include external_url in response
         * starting_commit_SHA -> string or None
     """
-    subresource_req_dict = {'output_is_json':True}
+    subresource_req_dict = {'output_is_json': True}
     culled_params = {}
     # default behaviors, here. Overloaded by request specific args below
     params = {'version_history': True}
@@ -234,6 +291,7 @@ def subresource_request(request, umbrella):
             culled_params['doc_id'] = '.'.join(last_word_dot_split[:-1])
     return subresource_req_dict, culled_params
 
+
 @view_config(route_name='get_study_subresource_no_id', renderer='json', request_method='GET')
 @view_config(route_name='get_study_subresource_via_id', renderer='json', request_method='GET')
 @view_config(route_name='get_study_via_id_and_ext', renderer='json', request_method='GET')
@@ -263,7 +321,7 @@ def get_document(request):
     """OpenTree API methods relating to reading"""
     resource_type = request.matchdict['resource_type']
     umbrella = umbrella_from_request(request)
-    subresource_req_dict, params = subresource_request(request, umbrella)
+    subresource_req_dict, params = subresource_request(request)
     doc_id = params['doc_id']
     triple = umbrella.is_plausible_transformation(subresource_req_dict)
     is_plausible, reason_or_converter, out_syntax = triple
@@ -329,6 +387,140 @@ def get_document(request):
     return Response(body=result_data, content_type='text/plain')
 
 
+@view_config(route_name='put_study_via_id', renderer='json', request_method='PUT')
+def put_study_document(request):
+    request.matchdict['resource_type'] = 'study'
+    return put_document(request)
+
+
+@view_config(route_name='put_taxon_amendment_via_id', renderer='json', request_method='PUT')
+def put_amendment_document(request):
+    request.matchdict['resource_type'] = 'taxon_amendments'
+    return put_document(request)
+
+
+@view_config(route_name='put_tree_collection_via_id', renderer='json', request_method='PUT')
+def put_collection_document(request):
+    request.matchdict['resource_type'] = 'tree_collections'
+    u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
+    request.matchdict['doc_id'] = '/'.join(u_c)
+    return put_document(request)
+
+
+@view_config(route_name='post_study', renderer='json', request_method='POST')
+def post_study_document(request):
+    request.matchdict['resource_type'] = 'study'
+    return post_document(request)
+
+
+@view_config(route_name='post_taxon_amendment', renderer='json', request_method='POST')
+def post_amendment_document(request):
+    request.matchdict['resource_type'] = 'taxon_amendments'
+    return post_document(request)
+
+
+@view_config(route_name='post_tree_collection', renderer='json', request_method='POST')
+def post_collection_document(request):
+    request.matchdict['resource_type'] = 'tree_collections'
+    return post_document(request)
+
+
+_RESOURCE_TYPE_2_DATA_JSON_ARG = {'study': 'nexson',
+                                  'taxon_amendments': 'json',
+                                  'tree_collections': 'json'}
+
+
+def extract_write_args(request):
+    """Helper for a write-verb views. Joins params, matchdict and the JSON body
+    of the request into a dict with keys:
+        `auth_info`: {'login': gh-username,
+                      'name': user's name or None,
+                      'email': user's email from GH or None
+                    }
+    The following keys will hold string or None:
+        'starting_commit_SHA' SHA of parent of commit
+        'commit_msg' content of commit message
+        'merged_SHA',
+        'doc_id' ID (required for PUT, but not POST)
+        'resource_type'
+    raises Forbidden if auth fails
+    """
+    culled_params = {}
+    # default behaviors, here. Overloaded by request specific args below
+    params = {}
+    params.update(request.params)
+    params.update(dict(request.matchdict))
+    _LOG.debug('request.params={}'.format(request.params))
+    _LOG.debug('request.matchdict={}'.format(request.matchdict))
+    _LOG.debug('params={}'.format(params))
+    resource_type = params['resource_type']
+    data_kwarg_key = _RESOURCE_TYPE_2_DATA_JSON_ARG[resource_type]
+    try:
+        b = request.json_body
+        for key, value in b.items():
+            if key != data_kwarg_key:
+                params[key] = value
+    except:
+        pass
+    culled_params['auth_info'] = authenticate(**params)
+    for key in ('starting_commit_SHA', 'commit_msg', 'merged_SHA', 'doc_id', 'resource_type'):
+        val = params.get(key)
+        culled_params[key] = val
+    document_object = _extract_json_obj_from_http_call(request, data_kwarg_key=data_kwarg_key)
+    culled_params['document'] = document_object
+    return culled_params
+
+def post_document(reqest):
+    """Open Tree API methods relating to creating a new resource"""
+    post_args = extract_write_args(request)
+    if post_args.get('doc_id') is None:
+        raise HTTPBadRequest(body='POST operation does not expect a URL that ends with a document ID')
+    umbrella = umbrella_from_request(request)
+    return finish_write_operation(umbrella, post_args)
+
+def put_document(request):
+    """Open Tree API methods relating to updating existing resources"""
+    put_args = extract_write_args(request)
+    if put_args.get('starting_commit_SHA') is None:
+        raise HTTPBadRequest(body='PUT operation expects a "starting_commit_SHA" argument with the SHA of the parent')
+    if put_args.get('doc_id') is None:
+        raise HTTPBadRequest(body='PUT operation expects a URL that ends with a document ID')
+    umbrella = umbrella_from_request(request)
+    return finish_write_operation(umbrella, put_args)
+
+def finish_write_operation(umbrella, put_args):
+    auth_info = put_args['auth_info']
+    parent_sha = put_args.get('starting_commit_SHA')
+    doc_id = put_args.get('doc_id')
+    resource_type = put_args['resource_type']
+    commit_msg = put_args.get('commit_msg')
+    merged_sha = put_args.get('merged_SHA')
+    lmsg = 'PUT of {} with doc id = {} for starting_commit_SHA = {} and merged_SHA = {}'
+    _LOG.debug(lmsg.format(resource_type, doc_id, parent_sha, merged_sha))
+    document_object = put_args.get('document')
+    bundle = umbrella.validate_doc(document_object, put_args)
+    processed_doc, annotation, doc_adaptor = bundle
+    try:
+        annotated_commit = umbrella.annotate_and_write(document=processed_doc,
+                                                       doc_id=doc_id,
+                                                       auth_info=auth_info,
+                                                       adaptor=doc_adaptor,
+                                                       annotation=annotation,
+                                                       parent_sha=parent_sha,
+                                                       commit_msg=commit_msg,
+                                                       merged_SHA=merged_sha)
+    except GitWorkflowError, err:
+        _LOG.exception('write operation failed in annotate_and_write')
+        raise HTTPBadRequest(body=err.msg)
+    if annotated_commit.get('error', 0) != 0:
+        raise HTTPBadRequest(body=json.dumps(annotated_commit))
+
+    mn = annotated_commit.get('merge_needed')
+    if (mn is not None) and (not mn):
+        trigger_push(umbrella, doc_id, 'EDIT', auth_info)
+    return annotated_commit
+
+
 # TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
 def fetch_all_docs_and_last_commit(docstore):
     doc_list = []
@@ -387,21 +579,20 @@ def list_all_amendments(request):
     return request.registry.settings['taxon_amendments'].get_doc_ids()
 
 
-'''
 @view_config(route_name='options_study_id', renderer='json', request_method='OPTIONS')
-@view_config(route_name='options_study', renderer='json', request_method='OPTIONS')
+@view_config(route_name='options_taxon_amendment_id', renderer='json', request_method='OPTIONS')
+@view_config(route_name='options_tree_collection_id', renderer='json', request_method='OPTIONS')
 @view_config(route_name='options_generic', renderer='json', request_method='OPTIONS')
-@api_versioned
-@generic_umbrella
-def study_options(request, *valist):
+def study_options(request):
     """A simple method for approving CORS preflight request"""
+    response = Response(status_code=200)
     if request.env.http_access_control_request_method:
         response.headers['Access-Control-Allow-Methods'] = 'POST,GET,DELETE,PUT,OPTIONS'
     if request.env.http_access_control_request_headers:
         response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
-    response.status_code = 200
     return response
-'''
+
+
 '''
 
 import urllib2
@@ -547,46 +738,6 @@ def post_study(request):
         raise HTTPBadRequest(body=json.dumps(commit_return))
     _deferred_push_to_gh_call(request, new_resource_id, **params)
     return commit_return
-
-
-@view_config(route_name='put_study_id', renderer='json', request_method='PUT')
-def put_study(request):
-    """Open Tree API methods relating to updating existing resources"""
-    parent_sha = request.params.get('starting_commit_SHA')
-    if parent_sha is None:
-        raise_http_error_from_msg('Expecting a "starting_commit_SHA" argument with the SHA of the parent')
-    commit_msg = request.params.get('commit_msg')
-    master_file_blob_included = request.params.get('merged_SHA')
-    study_id = request.matchdict['study_id']
-    _LOG.debug('PUT to study {} for starting_commit_SHA = {} and merged_SHA = {}'.format(study_id,
-                                                                                         parent_sha,
-                                                                                         str(
-                                                                                             master_file_blob_included)))
-    auth_info = authenticate(**request.params)
-    phylesystem = request.registry.settings['phylesystem']
-    bundle = _extract_and_validate_nexson(request,
-                                          phylesystem.repo_nexml2json,
-                                          request.params)
-    nexson, annotation, nexson_adaptor = bundle
-    gd = phylesystem.create_git_action(resource_id)
-    try:
-        blob = _finish_write_verb(phylesystem,
-                                  gd,
-                                  nexson=nexson,
-                                  resource_id=study_id,
-                                  auth_info=auth_info,
-                                  adaptor=nexson_adaptor,
-                                  annotation=annotation,
-                                  parent_sha=parent_sha,
-                                  commit_msg=commit_msg,
-                                  master_file_blob_included=master_file_blob_included)
-    except GitWorkflowError, err:
-        _LOG.exception('PUT failed in _finish_write_verb')
-        raise_http_error_from_msg(err.msg)
-    mn = blob.get('merge_needed')
-    if (mn is not None) and (not mn):
-        _deferred_push_to_gh_call(request, study_id, **request.params)
-    return blob
 
 
 @view_config(route_name='delete_study_id', renderer='json', request_method='DELETE')
@@ -857,52 +1008,4 @@ def compose_push_to_github_url(request, study_id):
         return route_url('push', request)
     return route_url('push_id', request, study_id=study_id)
 
-
-def _extract_nexson_from_http_call(request, **kwargs):
-    """Returns the nexson blob from `kwargs` or the request.body"""
-    try:
-        # check for kwarg 'nexson', or load the full request body
-        if 'nexson' in kwargs:
-            nexson = kwargs.get('nexson', {})
-        else:
-            nexson = request.json_body
-
-        if not isinstance(nexson, dict):
-            nexson = json.loads(nexson)
-        if 'nexson' in nexson:
-            nexson = nexson['nexson']
-    except:
-        _LOG.exception('Exception getting nexson content in __extract_nexson_from_http_call')
-        raise_http_error_from_msg('NexSON must be valid JSON')
-    return nexson
-
-
-def _finish_write_verb(phylesystem,
-                       git_data,
-                       nexson,
-                       resource_id,
-                       auth_info,
-                       adaptor,
-                       annotation,
-                       parent_sha,
-                       commit_msg='',
-                       master_file_blob_included=None):
-    """Called by PUT and POST handlers to avoid code repetition."""
-    # global TIMING
-    # TODO, need to make this spawn a thread to do the second commit rather than block
-    a = phylesystem.annotate_and_write(git_data,
-                                       nexson,
-                                       resource_id,
-                                       auth_info,
-                                       adaptor,
-                                       annotation,
-                                       parent_sha,
-                                       commit_msg,
-                                       master_file_blob_included)
-    annotated_commit = a
-    # TIMING = api_utils.log_time_diff(_LOG, 'annotated commit', TIMING)
-    if annotated_commit['error'] != 0:
-        _LOG.debug('annotated_commit failed')
-        raise_http_error_from_msg(json.dumps(annotated_commit))
-    return annotated_commit
 '''
