@@ -1,3 +1,4 @@
+import os
 import copy
 import json
 import traceback
@@ -11,7 +12,9 @@ from peyotl import NexsonDocSchema, GitWorkflowError
 # noinspection PyPackageRequirements
 from github import Github, BadCredentialsException
 
-
+# LOCAL_TESTING_MODE=1 in env can used for situations in which you are offline
+#   and cannot use methods associated with the GitHub webservices
+_LOCAL_TESTING_MODE = os.environ.get('LOCAL_TESTING_MODE', '0') == '1'
 _LOG = get_logger(__name__)
 _DOC_STORE = None
 _API_VERSIONS = frozenset(['v1', 'v2', 'v3'])
@@ -64,6 +67,8 @@ def authenticate(**kwargs):
     auth_token = kwargs.get('auth_token', '')
     if not auth_token:
         raise HTTPForbidden(body="You must provide an auth_token to authenticate to the OpenTree API")
+    if _LOCAL_TESTING_MODE:
+        return {'login': 'fake_gh_login', 'name': 'Fake Name', 'email': 'fake@bogus.com'}
     gh = Github(auth_token)
     gh_user = gh.get_user()
     auth_info = {}
