@@ -2,7 +2,7 @@
 from pyramid.config import Configurator
 from pyramid.request import Request
 from pyramid.request import Response
-from phylesystem_api.util import fill_app_settings
+from phylesystem_api.views import fill_app_settings
 import logging
 
 _LOG = logging.getLogger(__name__)

@@ -1,0 +1,534 @@
+
+
+
+'''
+import logging
+import os
+
+import anyjson
+import requests
+from peyotl.nexson_syntax import get_empty_nexson, BY_ID_HONEY_BADGERFISH
+from peyotl.phylesystem import Phylesystem
+from peyotl.phylesystem.git_actions import PhylesystemGitAction
+from peyotl.utility.input_output import download as fetch
+from pyramid.httpexceptions import HTTPBadRequest
+
+_LOG = logging.getLogger(__name__)
+
+
+
+
+
+
+
+
+
+class OTISearch(object):
+    def __init__(self, api_base_url):
+        self.api_base_url = api_base_url
+
+    def do_search(self, kind, key, value):
+        kind_to_oti_url = {
+            "tree": "singlePropertySearchForTrees/",
+            "node": "singlePropertySearchForTreeNodes/",
+            "study": "singlePropertySearchForStudies/"
+        }
+
+        headers = {
+            'content-type': 'application/json',
+            'accept': 'application/json',
+        }
+        search_url = self.api_base_url + kind_to_oti_url[kind]
+        data = {"property": key, "value": value}
+
+        r = requests.post(search_url, headers=headers, data=anyjson.dumps(data), allow_redirects=True)
+        try:
+            response = r.json()
+        except:
+            return anyjson.dumps({"error": 1})
+
+        return response
+
+
+def new_nexson_with_crossref_metadata(doi, ref_string, include_cc0=False):
+    if doi:
+        # use the supplied DOI to fetch study metadata
+
+        # Cleanup submitted DOI to work with CrossRef API.
+        #   WORKS: http://dx.doi.org/10.999...
+        #   WORKS: doi:10.999...
+        #   FAILS: doi: 10.999...
+        #   FAILS: DOI:10.999...
+        # Let's keep it simple and make it a bare DOI.
+        # All DOIs use the directory indicator '10.', see
+        #   http://www.doi.org/doi_handbook/2_Numbering.html#2.2.2
+
+        # Remove all whitespace from the submitted DOI...
+        publication_doi = "".join(doi.split())
+        # ... then strip everything up to the first '10.'
+        doi_parts = publication_doi.split('10.')
+        doi_parts[0] = ''
+        search_term = '10.'.join(doi_parts)
+
+    elif ref_string:
+        # use the supplied reference text to fetch study metadata
+        search_term = ref_string
+
+    # look for matching studies via CrossRef.org API
+    furl = 'http://search.crossref.org/dois?{}'.format(urlencode({'q': search_term}))
+    doi_lookup_response = fetch(furl)
+    doi_lookup_response = unicode(doi_lookup_response, 'utf-8')  # make sure it's Unicode!
+    matching_records = anyjson.loads(doi_lookup_response)
+
+    # if we got a match, grab the first (probably only) record
+    if len(matching_records) > 0:
+        match = matching_records[0]
+
+        # Convert HTML reference string to plain text
+        raw_publication_reference = match.get('fullCitation', '')
+        raise NotImplementError('parsing crossref should use beautiful soup!!!')  # TODO
+        ref_element_tree = web2pyHTMLParser(raw_publication_reference).tree
+        # root of this tree is the complete mini-DOM
+        ref_root = ref_element_tree.elements()[0]
+        # reduce this root to plain text (strip any tags)
+
+        meta_publication_reference = ref_root.flatten().decode('utf-8')
+        meta_publication_url = match.get('doi', u'')  # already in URL form
+        meta_year = match.get('year', u'')
+
+    else:
+        # Add a bogus reference string to signal the lack of results
+        if doi:
+            meta_publication_reference = u'No matching publication found for this DOI!'
+        else:
+            meta_publication_reference = u'No matching publication found for this reference string'
+        meta_publication_url = u''
+        meta_year = u''
+
+    # add any found values to a fresh NexSON template
+    nexson = get_empty_nexson(BY_ID_HONEY_BADGERFISH, include_cc0=include_cc0)
+    nexml_el = nexson['nexml']
+    nexml_el[u'^ot:studyPublicationReference'] = meta_publication_reference
+    if meta_publication_url:
+        nexml_el[u'^ot:studyPublication'] = {'@href': meta_publication_url}
+    if meta_year:
+        nexml_el[u'^ot:studyYear'] = meta_year
+    return nexson
+'''
+
+'''
+
+import urllib2
+
+import anyjson
+from peyotl.nexson_syntax import get_empty_nexson, \
+    PhyloSchema, \
+    BY_ID_HONEY_BADGERFISH
+from peyotl.phylesystem.git_workflows import GitWorkflowError, \
+    merge_from_master
+from pyramid.httpexceptions import HTTPNotFound, HTTPBadRequest, HTTPConflict
+from pyramid.url import route_url
+from pyramid.view import view_config
+
+
+from phylesystem_api.util import err_body, \
+    raise_http_error_from_msg, \
+    authenticate, \
+    new_nexson_with_crossref_metadata, \
+    OTISearch
+
+
+
+@view_config(route_name='post_study_id', renderer='json', request_method='POST')
+@view_config(route_name='post_study', renderer='json', request_method='POST')
+def post_study(request):
+    """Open Tree API methods relating to creating (and importing) resources"""
+    params = dict(request.params)
+    params.update(dict(request.matchdict))
+    auth_info = authenticate(**params)
+    phylesystem = request.registry.settings['phylesystem']
+    # Studies that were created in phylografter, can be added by
+    #   POSTing the content with resource_id
+    new_study_id = params.get('study_id')
+    if new_study_id is not None:
+        bundle = _extract_and_validate_nexson(request,
+                                              phylesystem.repo_nexml2json,
+                                              params)
+        new_study_nexson = bundle[0]
+    else:
+        # we're creating a new study (possibly with import instructions in the payload)
+        import_from_location = params.get('import_from_location', '')
+        treebase_id = params.get('treebase_id', '')
+        nexml_fetch_url = params.get('nexml_fetch_url', '')
+        nexml_pasted_string = params.get('nexml_pasted_string', '')
+        publication_doi = params.get('publication_DOI', '')
+        publication_ref = params.get('publication_reference', '')
+        # is the submitter explicity applying the CC0 waiver to a new study
+        # (i.e., this study is not currently in an online repository)?
+        if import_from_location == 'IMPORT_FROM_UPLOAD':
+            cc0_agreement = (params.get('chosen_license', '') == 'apply-new-CC0-waiver' and
+                             params.get('cc0_agreement', '') == 'true')
+        else:
+            cc0_agreement = False
+        # look for the chosen import method, e.g,
+        # 'import-method-PUBLICATION_DOI' or 'import-method-MANUAL_ENTRY'
+        import_method = params.get('import_method', '')
+
+        # dryad_DOI = params.get('dryad_DOI', '')
+
+        app_name = "api"
+        # add known values for its metatags
+        meta_publication_reference = None
+
+        # Create initial study NexSON using the chosen import method.
+        #
+        # N.B. We're currently using a streamlined creation path with just
+        # two methods (TreeBASE ID and publication DOI). But let's keep the
+        # logic for others, just in case we revert based on user feedback.
+        importing_from_treebase_id = (import_method == 'import-method-TREEBASE_ID' and treebase_id)
+        importing_from_nexml_fetch = (import_method == 'import-method-NEXML' and nexml_fetch_url)
+        importing_from_nexml_string = (import_method == 'import-method-NEXML' and nexml_pasted_string)
+        importing_from_crossref_API = (import_method == 'import-method-PUBLICATION_DOI' and publication_doi) or \
+                                      (import_method == 'import-method-PUBLICATION_REFERENCE' and publication_ref)
+
+        # Are they using an existing license or waiver (CC0, CC-BY, something else?)
+        using_existing_license = (params.get('chosen_license', '') == 'study-data-has-existing-license')
+
+        # any of these methods should returna parsed NexSON dict (vs. string)
+        if importing_from_treebase_id:
+            # make sure the treebase ID is an integer
+            treebase_id = "".join(treebase_id.split())  # remove all whitespace
+            treebase_id = treebase_id.lstrip('S').lstrip('s')  # allow for possible leading 'S'?
+            try:
+                treebase_id = int(treebase_id)
+            except ValueError, e:
+                _edescrip = "TreeBASE ID should be a simple integer, not '%s'! Details:\n%s" % (treebase_id, e.message)
+                raise HTTPBadRequest(body=err_body(_edescrip))
+            new_study_nexson = import_nexson_from_treebase(treebase_id,
+                                                           nexson_syntax_version=BY_ID_HONEY_BADGERFISH)
+        # elif importing_from_nexml_fetch:
+        #     if not (nexml_fetch_url.startswith('http://') or nexml_fetch_url.startswith('https://')):
+        #         raise HTTP(400, json.dumps({
+        #             "error": 1,
+        #             "description": 'Expecting: "nexml_fetch_url" to startwith http:// or https://',
+        #         }))
+        #     new_study_nexson = get_ot_study_info_from_treebase_nexml(src=nexml_fetch_url,
+        #                                                     nexson_syntax_version=BY_ID_HONEY_BADGERFISH)
+        # elif importing_from_nexml_string:
+        #     new_study_nexson = get_ot_study_info_from_treebase_nexml(nexml_content=nexml_pasted_string,
+        #                                                    nexson_syntax_version=BY_ID_HONEY_BADGERFISH)
+        elif importing_from_crossref_API:
+            new_study_nexson = new_nexson_with_crossref_metadata(doi=publication_doi,
+                                                                 ref_string=publication_ref,
+                                                                 include_cc0=cc0_agreement)
+        else:  # assumes 'import-method-MANUAL_ENTRY', or insufficient args above
+            new_study_nexson = get_empty_nexson(BY_ID_HONEY_BADGERFISH,
+                                                include_cc0=cc0_agreement)
+
+        nexml = new_study_nexson['nexml']
+
+        # If submitter requested the CC0 waiver or other waiver/license, make sure it's here
+        if importing_from_treebase_id or cc0_agreement:
+            nexml['^xhtml:license'] = {'@href': 'http://creativecommons.org/publicdomain/zero/1.0/'}
+        elif using_existing_license:
+            existing_license = params.get('alternate_license', '')
+            if existing_license == 'CC-0':
+                nexml['^xhtml:license'] = {'@href': 'http://creativecommons.org/publicdomain/zero/1.0/'}
+                pass
+            elif existing_license == 'CC-BY':
+                nexml['^xhtml:license'] = {'@href': 'http://creativecommons.org/licenses/by/4.0/'}
+                pass
+            else:  # assume it's something else
+                alt_license_name = params.get('alt_license_name', '')
+                alt_license_url = params.get('alt_license_URL', '')
+                # OK to add a name here? mainly to capture submitter's intent
+                nexml['^xhtml:license'] = {'@name': alt_license_name, '@href': alt_license_url}
+
+        nexml['^ot:curatorName'] = auth_info.get('name', '').decode('utf-8')
+
+    try:
+        r = phylesystem.ingest_new_study(new_study_nexson,
+                                         phylesystem.repo_nexml2json,
+                                         auth_info,
+                                         new_study_id)
+        new_resource_id, commit_return = r
+    except GitWorkflowError, err:
+        raise_http_error_from_msg(err.msg)
+    except:
+        raise_http_error_from_msg(traceback.format_exc())
+    if commit_return['error'] != 0:
+        _LOG.debug('ingest_new_study failed with error code')
+        raise HTTPBadRequest(body=json.dumps(commit_return))
+    _deferred_push_to_gh_call(request, new_resource_id, **params)
+    return commit_return
+
+
+@view_config(route_name='delete_study_id', renderer='json', request_method='DELETE')
+def delete_study(request):
+    """Open Tree API methods relating to deleting existing resources"""
+    # support JSONP request from another domain
+    parent_sha = request.params.get('starting_commit_SHA')
+    if parent_sha is None:
+        raise_http_error_from_msg('Expecting a "starting_commit_SHA" argument with the SHA of the parent')
+    auth_info = authenticate(**request.params)
+    study_id = request.matchdict['study_id']
+    phylesystem = request.registry.settings['phylesystem']
+    try:
+        x = phylesystem.delete_study(study_id, auth_info, parent_sha)
+        if x.get('error') == 0:
+            _deferred_push_to_gh_call(request, None, **request.params)
+        return x
+    except GitWorkflowError, err:
+        raise_http_error_from_msg(err.msg)
+    except:
+        _LOG.exception('Exception getting nexson content in phylesystem.delete_study')
+        raise_http_error_from_msg('Unknown error in study deletion')
+
+
+
+
+@view_config(route_name='push_id', renderer='json')
+@view_config(route_name='push', renderer='json')
+def push_to_github(request):
+    """OpenTree API methods relating to updating branches
+
+    curl -X POST http://localhost:8000/api/push/v1/9
+    """
+
+    # support JSONP request from another domain
+    phylesystem = request.registry.settings['phylesystem']
+    study_id = request.matchdict['study_id']
+
+    try:
+        phylesystem.push_study_to_remote('GitHubRemote', study_id)
+    except:
+        m = traceback.format_exc()
+        raise HTTPConflict(body=err_body("Could not push! Details: {m}".format(m=m)))
+    return {'error': 0,
+            'description': 'Push succeeded'}
+
+
+@view_config(route_name='merge_id', renderer='json', request_method='POST')
+def merge(request):
+    """OpenTree API methods relating to updating branches
+
+    curl -X POST http://localhost:8000/api/merge/v1/9&starting_commit_SHA=152316261261342&auth_token=$GITHUB_OAUTH_TOKEN
+
+    If the request is successful, a JSON response similar to this will be returned:
+
+    {
+        "error": 0,
+        "branch_name": "my_user_9_2",
+        "description": "Updated branch",
+        "sha": "dcab222749c9185797645378d0bda08d598f81e7",
+        "merged_SHA": "16463623459987070600ab2757540c06ddepa608",
+    }
+
+    'merged_SHA' must be included in the next PUT for this study (unless you are
+        happy with your work languishing on a WIP branch instead of master).
+
+    If there is an error, an HTTP 400 error will be returned with a JSON response similar
+    to this:
+
+    {
+        "error": 1,
+        "description": "Could not merge master into WIP! Details: ..."
+    }
+    """
+    auth_info = authenticate(**request.params)
+    phylesystem = request.registry.settings['phylesystem']
+    study_id = request.matchdict['study_id']
+    gd = phylesystem.create_git_action(study_id)
+    try:
+        return merge_from_master(gd, study_id, auth_info, starting_commit_SHA)
+    except GitWorkflowError, err:
+        raise_http_error_from_msg(err.msg)
+    except:
+        import traceback
+        m = traceback.format_exc()
+        raise HTTPConflict(body=err_body("Could not merge! Details: {m}".format(m=m)))
+
+
+@view_config(route_name='search', renderer='json', request_method='GET')
+def search(request):
+    """OpenTree API methods relating to searching
+Example:
+
+    http://localhost:8000/api/search/v1/tree/ot-ottTaxonName/Carex
+    http://localhost:8000/api/search/v1/node/ot-ottId/1000455
+
+When searching for a property name ot:foo, ot-foo must be used
+because web2py does not recognize URLs that contain a colon
+other than specifying a port, even if URL encoded.
+
+"""
+    oti_base_url = request.registry.settings['oti_base_url']
+    api_base_url = "%s/ext/QueryServices/graphdb/" % (oti_base_url,)
+    oti = OTISearch(api_base_url)
+    kind = request.matchdict['kind'].lower()
+    property_name = request.matchdict['property_name']
+    search_term = request.matchdict['search_term']
+    # colons don't play nicely with GET requests
+    property_name = property_name.replace("-", ":")
+    valid_kinds = ("study", "tree", "node")
+    if kind not in valid_kinds:
+        raise_http_error_from_msg('not a valid property name')
+    return oti.do_search(kind, property_name, search_term)
+
+
+@view_config(route_name='nudge_indexers', renderer='json', request_method='POST')
+def nudge_indexers():
+    """"Support method to update oti index in response to GitHub webhooks
+
+This examines the JSON payload of a GitHub webhook to see which studies have
+been added, modified, or removed. Then it calls oti's index service to
+(re)index the NexSON for those studies, or to delete a study's information if
+it was deleted from the docstore.
+
+N.B. This depends on a GitHub webhook on the chosen docstore.
+"""
+    oti_base_url = request.registry.settings['oti_base_url']
+    opentree_docstore_url = request.registry.settings['opentree_docstore_url']
+    payload = request.params
+    msg = ''
+
+    # EXAMPLE of a working curl call to nudge index:
+    # curl -X POST -d '{"urls": ["https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/10/10.json",
+     " https://raw.github.com/OpenTreeOfLife/phylesystem/master/study/9/9.json"]}'
+     -H "Content-type: application/json"
+     http://ec2-54-203-194-13.us-west-2.compute.amazonaws.com/oti/ext/IndexServices/graphdb/indexNexsons
+
+    # Pull needed values from config file (typical values shown)
+    #   opentree_docstore_url = "https://github.com/OpenTreeOfLife/phylesystem"        # munge this to grab raw NexSON)
+    #   oti_base_url='http://ec2-54-203-194-13.us-west-2.compute.amazonaws.com/oti'    # confirm we're pushing to the right OTI service(s)!
+    try:
+        # how we nudge the index depends on which studies are new, changed, or deleted
+        added_study_ids = []
+        modified_study_ids = []
+        removed_study_ids = []
+        # TODO: Should any of these lists override another? maybe use commit timestamps to "trump" based on later operations?
+        for commit in payload['commits']:
+            _harvest_study_ids_from_paths(commit['added'], added_study_ids)
+            _harvest_study_ids_from_paths(commit['modified'], modified_study_ids)
+            _harvest_study_ids_from_paths(commit['removed'], removed_study_ids)
+
+        # "flatten" each list to remove duplicates
+        added_study_ids = list(set(added_study_ids))
+        modified_study_ids = list(set(modified_study_ids))
+        removed_study_ids = list(set(removed_study_ids))
+
+    except:
+        raise_http_error_from_msg("malformed GitHub payload")
+
+    if payload['repository']['url'] != opentree_docstore_url:
+        raise_http_error_from_msg("wrong repo for this API instance")
+
+    # TODO Jim had urlencode=False in web2py. need to ask him why that was needed...
+    nexson_url_template = route_url('get_study_id',
+                                    request,
+                                    study_id='%s',
+                                    _query={'output_nexml2json': '0.0.0'})
+    # for now, let's just add/update new and modified studies using indexNexsons
+    add_or_update_ids = added_study_ids + modified_study_ids
+    # NOTE that passing deleted_study_ids (any non-existent file paths) will
+    # fail on oti, with a FileNotFoundException!
+    add_or_update_ids = list(set(add_or_update_ids))  # remove any duplicates
+
+    if len(add_or_update_ids) > 0:
+        nudge_url = "%s/ext/IndexServices/graphdb/indexNexsons" % (oti_base_url,)
+        nexson_urls = [(nexson_url_template % (study_id,)) for study_id in add_or_update_ids]
+
+        # N.B. that gluon.tools.fetch() can't be used here, since it won't send
+        # "raw" JSON data as treemachine expects
+        req = urllib2.Request(
+            url=nudge_url,
+            data=json.dumps({
+                "urls": nexson_urls
+            }),
+            headers={"Content-Type": "application/json"}
+        )
+        try:
+            nudge_response = urllib2.urlopen(req).read()
+            updated_study_ids = json.loads(nudge_response)
+        except Exception, e:
+            # TODO: log oti exceptions into my response
+            msg += """indexNexsons failed!'
+nudge_url: %s
+nexson_url_template: %s
+nexson_urls: %s
+%s""" % (nudge_url, nexson_url_template, nexson_urls, traceback.format_exc(),)
+            _LOG.exception(msg)
+            # TODO: check returned IDs against our original lists... what if something failed?
+
+    if len(removed_study_ids) > 0:
+        # Un-index the studies that were removed from docstore
+        remove_url = "%s/ext/IndexServices/graphdb/unindexNexsons" % (oti_base_url,)
+        req = urllib2.Request(
+            url=remove_url,
+            data=json.dumps({
+                "ids": removed_study_ids
+            }),
+            headers={"Content-Type": "application/json"}
+        )
+        try:
+            remove_response = urllib2.urlopen(req).read()
+            unindexed_study_ids = json.loads(remove_response)
+        except Exception, e:
+            msg += """unindexNexsons failed!'
+remove_url: %s
+removed_study_ids: %s
+%s""" % (remove_url, removed_study_ids, traceback.format_exc(),)
+            _LOG.exception(msg)
+
+            # TODO: check returned IDs against our original list... what if something failed?
+
+    github_webhook_url = "%s/settings/hooks" % opentree_docstore_url
+    return """This URL should be called by a webhook set in the docstore repo:
+<br /><br />
+<a href="%s">%s</a><br />
+<pre>%s</pre>
+""" % (github_webhook_url, github_webhook_url, msg,)
+
+
+def _harvest_study_ids_from_paths(path_list, target_array):
+    for path in path_list:
+        path_parts = path.split('/')
+        if path_parts[0] == "study":
+            # skip any intermediate directories in docstore repo
+            study_id = path_parts[len(path_parts) - 2]
+            target_array.append(study_id)
+
+
+
+
+def _extract_and_validate_nexson(request, repo_nexml2json, kwargs):
+    try:
+        nexson = _extract_nexson_from_http_call(request, **kwargs)
+        bundle = validate_and_convert_nexson(nexson,
+                                             repo_nexml2json,
+                                             allow_invalid=False)
+        nexson, annotation, validation_log, nexson_adaptor = bundle
+    except GitWorkflowError, err:
+        _LOG.exception('PUT failed in validation')
+        raise_http_error_from_msg(err.msg)
+    return nexson, annotation, nexson_adaptor
+
+
+def _deferred_push_to_gh_call(request, resource_id, **kwargs):
+    _LOG.debug('in _deferred_push_to_gh_call')
+    if call_http_json is not None:
+        url = utils.compose_push_to_github_url(request, resource_id)
+        auth_token = copy.copy(kwargs.get('auth_token'))
+        data = {}
+        if auth_token is not None:
+            data['auth_token'] = auth_token
+        _LOG.debug('_deferred_push_to_gh_call({u}, {d})'.format(u=url, d=str(data)))
+        call_http_json.delay(url=url, verb='PUT', data=data)
+
+
+def compose_push_to_github_url(request, study_id):
+    if study_id is None:
+        return route_url('push', request)
+    return route_url('push_id', request, study_id=study_id)
+
+'''
