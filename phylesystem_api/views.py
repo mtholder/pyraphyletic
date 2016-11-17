@@ -490,32 +490,31 @@ def extract_write_args(request):
         val = params.get(key)
         culled_params[key] = val
     document_object = _extract_json_obj_from_http_call(request, data_kwarg_key=data_kwarg_key)
-    culled_params['document'] = document_object
     _LOG.debug('culled_params = {}'.format(culled_params))
-    return culled_params
+    return document_object, culled_params
 
 
 def post_document(request):
     """Open Tree API methods relating to creating a new resource"""
-    post_args = extract_write_args(request)
+    document, post_args = extract_write_args(request)
     if post_args.get('doc_id') is None:
         raise HTTPBadRequest(body='POST operation does not expect a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
-    return finish_write_operation(umbrella, post_args)
+    return finish_write_operation(umbrella, document, post_args)
 
 
 def put_document(request):
     """Open Tree API methods relating to updating existing resources"""
-    put_args = extract_write_args(request)
+    document, put_args = extract_write_args(request)
     if put_args.get('starting_commit_SHA') is None:
         raise HTTPBadRequest(body='PUT operation expects a "starting_commit_SHA" argument with the SHA of the parent')
     if put_args.get('doc_id') is None:
         raise HTTPBadRequest(body='PUT operation expects a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
-    return finish_write_operation(umbrella, put_args)
+    return finish_write_operation(umbrella, document, put_args)
 
 
-def finish_write_operation(umbrella, put_args):
+def finish_write_operation(umbrella, document, put_args):
     auth_info = put_args['auth_info']
     parent_sha = put_args.get('starting_commit_SHA')
     doc_id = put_args.get('doc_id')
@@ -524,9 +523,13 @@ def finish_write_operation(umbrella, put_args):
     merged_sha = put_args.get('merged_SHA')
     lmsg = 'PUT of {} with doc id = {} for starting_commit_SHA = {} and merged_SHA = {}'
     _LOG.debug(lmsg.format(resource_type, doc_id, parent_sha, merged_sha))
-    document_object = put_args.get('document')
-    bundle = umbrella.validate_doc(document_object, put_args)
-    processed_doc, annotation, doc_adaptor = bundle
+    bundle = umbrella.validate_and_convert_doc(document, put_args)
+    processed_doc, errors, annotation, doc_adaptor = bundle
+    if len(errors) > 0:
+        msg = 'JSON {rt} payload failed validation with {nerrors} errors:\n{errors}'
+        msg = msg.format(rt=resource_type, nerrors=len(errors), errors='\n  '.join(errors))
+        _LOG.exception(msg)
+        raise HTTPBadRequest(body=msg)
     try:
         annotated_commit = umbrella.annotate_and_write(document=processed_doc,
                                                        doc_id=doc_id,
@@ -535,7 +538,7 @@ def finish_write_operation(umbrella, put_args):
                                                        annotation=annotation,
                                                        parent_sha=parent_sha,
                                                        commit_msg=commit_msg,
-                                                       merged_SHA=merged_sha)
+                                                       merged_sha=merged_sha)
     except GitWorkflowError, err:
         _LOG.exception('write operation failed in annotate_and_write')
         raise HTTPBadRequest(body=err.msg)

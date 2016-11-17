@@ -1,1 +1,1 @@
-../../germinator/ws-tests/run_tests.sh -t . http://127.0.0.1:6543
+../../germinator/ws-tests/run_tests.sh -t . host:allowwrite=true http://128.0.0.1:6543
