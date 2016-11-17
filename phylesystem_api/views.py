@@ -30,7 +30,6 @@ _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
                                           }
 
 
-
 def get_phylesystem(settings):
     global _DOC_STORE
     if _DOC_STORE is not None:
@@ -53,7 +52,6 @@ def err_body(description):
     err = {'error': 1,
            'description': description}
     return json.dumps(err)
-
 
 
 def authenticate(**kwargs):
@@ -497,7 +495,7 @@ def extract_write_args(request):
     return culled_params
 
 
-def post_document(reqest):
+def post_document(request):
     """Open Tree API methods relating to creating a new resource"""
     post_args = extract_write_args(request)
     if post_args.get('doc_id') is None:
@@ -620,5 +618,3 @@ def study_options(request):
     if request.env.http_access_control_request_headers:
         response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
     return response
-
-
