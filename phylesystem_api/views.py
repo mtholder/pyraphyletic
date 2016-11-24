@@ -104,7 +104,7 @@ class GitPushJob(object):
 
     def __str__(self):
         template = 'GitPushJob for {o} operation of "{i}" to store of "{d}" documents'
-        return template.format(i=self.operation, i=self.doc_id, d=self.umbrella.document_type)
+        return template.format(o=self.operation, i=self.doc_id, d=self.umbrella.document_type)
 
     def push_to_github(self):
         try:
@@ -632,7 +632,7 @@ def put_document(request):
     if put_args.get('doc_id') is None:
         raise HTTPBadRequest(body='PUT operation expects a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
-    return finish_write_operation(requests, umbrella, document, put_args)
+    return finish_write_operation(request, umbrella, document, put_args)
 
 
 def finish_write_operation(request, umbrella, document, put_args):
@@ -671,7 +671,7 @@ def finish_write_operation(request, umbrella, document, put_args):
         trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
     return annotated_commit
 
-def trigger_push(request, doc_id, operation, auth_info):
+def trigger_push(request, umbrella, doc_id, operation, auth_info):
     settings = request.registry.settings
     joq_queue = settings['job_queue']
     gpj = GitPushJob(request=request, umbrella=umbrella, operation=operation, auth_info=auth_info)
