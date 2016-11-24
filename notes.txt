@@ -531,4 +531,18 @@ def compose_push_to_github_url(request, study_id):
         return route_url('push', request)
     return route_url('push_id', request, study_id=study_id)
 
+
+@view_config(route_name='push_id', renderer='json')
+@view_config(route_name='push', renderer='json')
+def push_to_github(request):
+    """OpenTree API methods relating to updating branches
+    curl -X POST http://localhost:8000/api/push/v1/9
+    """
+
+    # support JSONP request from another domain
+    phylesystem = request.registry.settings['phylesystem']
+    study_id = request.matchdict['study_id']
+
+
+
 '''

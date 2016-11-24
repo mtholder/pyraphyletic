@@ -1,16 +1,21 @@
-import os
+#!/usr/bin/env python
+
 import copy
 import json
+import os
 import traceback
+from Queue import Queue
+from threading import Lock, Thread
+
 import bleach
 import markdown
+from github import Github, BadCredentialsException
+from peyotl import NexsonDocSchema, GitWorkflowError
 from peyotl import get_logger, create_doc_store_wrapper
-from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPForbidden)
+from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPForbidden,
+                                    HTTPConflict)
 from pyramid.response import Response
 from pyramid.view import view_config
-from peyotl import NexsonDocSchema, GitWorkflowError
-# noinspection PyPackageRequirements
-from github import Github, BadCredentialsException
 
 # LOCAL_TESTING_MODE=1 in env can used for situations in which you are offline
 #   and cannot use methods associated with the GitHub webservices
@@ -29,6 +34,109 @@ _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
                                           'collection': 'tree_collections',
                                           }
 
+_LOG = get_logger(__name__)
+
+class JobQueue(Queue):
+    def put(self, item, block=None, timeout=None):
+        _LOG.debug("%s queued" % str(item.context_str))
+        Queue.put(self, item, block=block, timeout=timeout)
+
+_jobq = JobQueue()
+
+def worker():
+    while True:
+        job = _jobq.get()
+        _LOG.debug('"{}" started"'.format(job))
+        try:
+            job.start()
+        except:
+            _LOG.exception("Worker dying.")
+        else:
+            try:
+                job.get_results()
+            except:
+                _LOG.error("Worker exception.  Error in job.get_results")
+        _LOG.debug('"{}" completed'.format(job))
+        _jobq.task_done()
+
+_WORKER_THREADS = []
+
+def start_worker(num_workers):
+    """Spawns worker threads such that at least `num_workers` threads will be
+    launched for processing jobs in the jobq.
+
+    The only way that you can get more than `num_workers` threads is if you
+    have previously called the function with a number > `num_workers`.
+    (worker threads are never killed).
+    """
+    assert num_workers > 0, "A positive number must be passed as the number of worker threads"
+    num_currently_running = len(_WORKER_THREADS)
+    for i in range(num_currently_running, num_workers):
+        _LOG.debug("Launching Worker thread #%d" % i)
+        t = Thread(target=worker)
+        _WORKER_THREADS.append(t)
+        t.setDaemon(True)
+        t.start()
+
+
+def add_push_failure(push_failure_dict_lock, push_failure_dict, umbrella, msg):
+    with push_failure_dict_lock:
+        fl = push_failure_dict.setdefault(umbrella.document_type, [])
+        fl.append(msg)
+
+def clear_push_failures(push_failure_dict_lock, push_failure_dict, umbrella):
+    with push_failure_dict_lock:
+        fl = push_failure_dict.setdefault(umbrella.document_type, [])
+        del fl[:]
+
+
+class GitPushJob(object):
+    def __init__(self, request, umbrella, doc_id, operation, auth_info):
+        settings = request.registry
+        self.push_failure_dict_lock = settings['push_failure_lock']
+        self.push_failure_dict = settings['doc_type_to_push_failure_list']
+        self.doc_id = doc_id
+        self.umbrella = umbrella
+        self.success = None
+        self.operation = operation
+        self.auth_info = auth_info
+        self.reindex_fn = None
+
+    def __str__(self):
+        template = 'GitPushJob for {o} operation of "{i}" to store of "{d}" documents'
+        return template.format(i=self.operation, i=self.doc_id, d=self.umbrella.document_type)
+
+    def push_to_github(self):
+        try:
+            self.umbrella.push_study_to_remote('GitHubRemote', self.doc_id)
+        except:
+            self.success = 'Push failed; logging of push failures list also failed.'
+            m = traceback.format_exc()
+            msg = "Could not push {i} ! Details: {m}".format(i=doc_id, m=m)
+            add_push_failure(push_failure_dict_lock=self.push_failure_dict_lock,
+                             push_failure_dict=self.push_failure_dict,
+                             umbrella=self.umbrella,
+                             msg=msg)
+            self.success = 'Push failed; logging of push failures list succeeded.'
+            raise HTTPConflict(body=msg)
+        self.success = 'Push succeeded; clear of push failures list failed.'
+        clear_push_failures(push_failure_dict_lock=self.push_failure_dict_lock,
+                            push_failure_dict=self.push_failure_dict,
+                            umbrella=self.umbrella)
+        if self.reindex_fn is not None:
+            self.success = 'Push and clearing of push_failures succeeded. Reindex failed.'
+            self.reindex_fn(self.umbrella.document_type, self.doc_id, self.operation)
+            self.success = 'Succeeded.'
+        else:
+            self.success = 'Push and clearing of push_failures succeeded; reindex not attempted'
+
+    def start(self):
+        self.push_to_github()
+
+    def get_results(self):
+        return self.success
+
+
 
 def get_phylesystem(settings):
     global _DOC_STORE
@@ -42,10 +150,23 @@ def get_phylesystem(settings):
 
 
 def fill_app_settings(settings):
+    """ Fills a settings dict with:
+        * 'phylesystem', 'taxon_amendments', 'tree_collections' ==> umbrella
+        * 'doc_type_to_push_failure_list' ==> {}
+        * 'push_failure_lock' ==> mutex Lock for doc_type_to_push_failure_list
+        * 'job_queue' ==> a thread safe queue to hold deferred jobs
+
+    As a side effect, launches a
+    """
+    start_worker(1)
     wrapper = get_phylesystem(settings)
     settings['phylesystem'] = wrapper.phylesystem
     settings['taxon_amendments'] = wrapper.taxon_amendments
     settings['tree_collections'] = wrapper.tree_collections
+    # Thread-safe dict that map doc type to lists of push failure messages.
+    settings['doc_type_to_push_failure_list'] = {}
+    settings['push_failure_lock'] = Lock()
+    settings['job_queue'] = _jobq
 
 
 def err_body(description):
@@ -500,7 +621,7 @@ def post_document(request):
     if post_args.get('doc_id') is None:
         raise HTTPBadRequest(body='POST operation does not expect a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
-    return finish_write_operation(umbrella, document, post_args)
+    return finish_write_operation(request, umbrella, document, post_args)
 
 
 def put_document(request):
@@ -511,10 +632,10 @@ def put_document(request):
     if put_args.get('doc_id') is None:
         raise HTTPBadRequest(body='PUT operation expects a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
-    return finish_write_operation(umbrella, document, put_args)
+    return finish_write_operation(requests, umbrella, document, put_args)
 
 
-def finish_write_operation(umbrella, document, put_args):
+def finish_write_operation(request, umbrella, document, put_args):
     auth_info = put_args['auth_info']
     parent_sha = put_args.get('starting_commit_SHA')
     doc_id = put_args.get('doc_id')
@@ -547,9 +668,14 @@ def finish_write_operation(umbrella, document, put_args):
 
     mn = annotated_commit.get('merge_needed')
     if (mn is not None) and (not mn):
-        trigger_push(umbrella, doc_id, 'EDIT', auth_info)
+        trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
     return annotated_commit
 
+def trigger_push(request, doc_id, operation, auth_info):
+    settings = request.registry.settings
+    joq_queue = settings['job_queue']
+    gpj = GitPushJob(request=request, umbrella=umbrella, operation=operation, auth_info=auth_info)
+    joq_queue.put(gpj)
 
 # TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
 def fetch_all_docs_and_last_commit(docstore):
@@ -621,3 +747,23 @@ def study_options(request):
     if request.env.http_access_control_request_headers:
         response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
     return response
+
+
+
+# The portion of this file that deals with the jobq and thread-safe
+# execution of delayed tasks is based on the scheduler.py file, which is part of SATe
+
+# SATe is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Jiaye Yu and Mark Holder, University of Kansas
