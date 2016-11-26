@@ -77,6 +77,10 @@ def main(global_config, **settings):
     config.add_route('generic_external_url',
                      v_rt_prefix + '/external_url/{doc_id}',
                      request_method='GET')
+    config.add_route('generic_push',
+                     v_rt_prefix + '/push',
+                     request_method='GET')
+
     # GET of entire resource
     config.add_route('get_study_via_id',
                      v_prefix + '/study/' + study_id_frag,
@@ -131,6 +135,11 @@ def main(global_config, **settings):
                      v_rt_prefix + '/',
                      request_method='OPTIONS')
 
+    config.add_route('trees_in_synth',
+                     v_prefix + '/trees_in_synth',
+                     request_method="GET")
+
+
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
     config.add_route('phylesystem_config', v_prefix + '/phylesystem_config')
@@ -153,8 +162,6 @@ def main(global_config, **settings):
         config.add_route('search', vstr + 'search/{kind}/{property_name}/{search_term}')
         config.add_route('nudge_indexers', vstr + 'nudgeIndexOnUpdates')
         config.add_route('merge_id', vstr + 'merge')
-        config.add_route('push', vstr + 'push')
-        config.add_route('unmerged_branches', vstr + 'unmerged_branches')
         '''
     config.scan()
     return config.make_wsgi_app()

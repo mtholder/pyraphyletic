@@ -4,16 +4,17 @@ import copy
 import json
 import os
 import traceback
+import requests
 from Queue import Queue
 from threading import Lock, Thread
 
 import bleach
 import markdown
 from github import Github, BadCredentialsException
-from peyotl import NexsonDocSchema, GitWorkflowError
-from peyotl import get_logger, create_doc_store_wrapper
+from peyotl import (NexsonDocSchema, GitWorkflowError, concatenate_collections, get_logger, create_doc_store_wrapper)
+from peyotl.utility.imports import SafeConfigParser
 from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPForbidden,
-                                    HTTPConflict)
+                                    HTTPConflict, HTTPGatewayTimeout, HTTPInternalServerError)
 from pyramid.response import Response
 from pyramid.view import view_config
 
@@ -91,7 +92,7 @@ def clear_push_failures(push_failure_dict_lock, push_failure_dict, umbrella):
 
 
 class GitPushJob(object):
-    def __init__(self, request, umbrella, doc_id, operation, auth_info):
+    def __init__(self, request, umbrella, doc_id, operation, auth_info=None):
         settings = request.registry.settings
         self.push_failure_dict_lock = settings['push_failure_lock']
         self.push_failure_dict = settings['doc_type_to_push_failure_list']
@@ -110,19 +111,28 @@ class GitPushJob(object):
         try:
             self.umbrella.push_study_to_remote('GitHubRemote', self.doc_id)
         except:
-            self.success = 'Push failed; logging of push failures list also failed.'
             m = traceback.format_exc()
             msg = "Could not push {i} ! Details: {m}".format(i=doc_id, m=m)
-            add_push_failure(push_failure_dict_lock=self.push_failure_dict_lock,
-                             push_failure_dict=self.push_failure_dict,
-                             umbrella=self.umbrella,
-                             msg=msg)
+            try:
+                add_push_failure(push_failure_dict_lock=self.push_failure_dict_lock,
+                                 push_failure_dict=self.push_failure_dict,
+                                 umbrella=self.umbrella,
+                                 msg=msg)
+            except:
+                msg = 'Error logging push failure following {}'.format(msg)
+                self.success = 'Push failed; logging of push failures list also failed.'
+                raise HTTPInternalServerError(body=msg)
             self.success = 'Push failed; logging of push failures list succeeded.'
             raise HTTPConflict(body=msg)
-        self.success = 'Push succeeded; clear of push failures list failed.'
-        clear_push_failures(push_failure_dict_lock=self.push_failure_dict_lock,
-                            push_failure_dict=self.push_failure_dict,
-                            umbrella=self.umbrella)
+        try:
+            clear_push_failures(push_failure_dict_lock=self.push_failure_dict_lock,
+                                push_failure_dict=self.push_failure_dict,
+                                umbrella=self.umbrella)
+        except:
+            msg = 'Push succeeded; clear of push failures list failed.'
+            _LOG.exception(msg)
+            self.success = msg
+            raise HTTPInternalServerError(body=msg)
         if self.reindex_fn is not None:
             self.success = 'Push and clearing of push_failures succeeded. Reindex failed.'
             self.reindex_fn(self.umbrella.document_type, self.doc_id, self.operation)
@@ -280,6 +290,42 @@ def extract_posted_data(request):
     raise HTTPBadRequest(body="no POSTed data", explanation='No data obtained from POST')
 
 
+@view_config(route_name='trees_in_synth', renderer='json')
+def trees_in_synth(request):
+    # URL could be configurable, but I'm not sure we've ever changed this...
+    url_of_synth_config = 'https://raw.githubusercontent.com/mtholder/propinquity/master/config.opentree.synth'
+    try:
+        resp = requests.get(url_of_synth_config)
+        conf_fo = StringIO(resp.content)
+    except:
+        raise HTTPGatewayTimeout(body='Could not fetch synthesis list from {}'.format(url_of_synth_config))
+    cfg = SafeConfigParser()
+    try:
+        cfg.readfp(conf_fo)
+    except:
+        raise HTTPInternalServerError(body='Could not parse file from {}'.format(url_of_synth_config))
+    try:
+        coll_id_list = cfg.get('synthesis', 'collections').split()
+    except:
+        msg = 'Could not find a collection list in file from {}'.format(url_of_synth_config)
+        raise HTTPInternalServerError(body=msg)
+    coll_list = []
+    cds = request.registry.settings['tree_collections']
+    for coll_id in coll_id_list:
+        try:
+            coll_list.append(cds.return_doc(coll_id, return_WIP_map=False)[0])
+        except:
+            msg = 'GET of collection {} failed'.format(coll_id)
+            _LOG.exception(msg)
+            raise  HTTPNotFound(body=msg)
+    try:
+        result = concatenate_collections(coll_list)
+    except:
+        msg = 'concatenation of collections failed'
+        _LOG.exception(msg)
+        return HTTPInternalServerError(body=msg)
+    return result
+
 @view_config(route_name='versioned_home', renderer='json')
 @view_config(route_name='home', renderer='json')
 def index(request):
@@ -329,6 +375,15 @@ def unmerged_branches(request):
     bl.sort()
     return bl
 
+@view_config(route_name='generic_push', renderer='json')
+def generic_push(request):
+    umbrella = umbrella_from_request(request)
+    gpj = GitPushJob(request=request,
+                     umbrella=umbrella,
+                     doc_id=None,
+                     operation='USER-TRIGGERED PUSH')
+    gpj.push_to_github()
+    return gpj.success
 
 def external_url_generic_helper(umbrella, doc_id, doc_id_key):
     try:
@@ -671,7 +726,7 @@ def finish_write_operation(request, umbrella, document, put_args):
         trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
     return annotated_commit
 
-def trigger_push(request, umbrella, doc_id, operation, auth_info):
+def trigger_push(request, umbrella, doc_id, operation, auth_info=None):
     settings = request.registry.settings
     joq_queue = settings['job_queue']
     gpj = GitPushJob(request=request, umbrella=umbrella, doc_id=doc_id, operation=operation, auth_info=auth_info)

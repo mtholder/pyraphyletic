@@ -514,35 +514,6 @@ def _extract_and_validate_nexson(request, repo_nexml2json, kwargs):
     return nexson, annotation, nexson_adaptor
 
 
-def _deferred_push_to_gh_call(request, resource_id, **kwargs):
-    _LOG.debug('in _deferred_push_to_gh_call')
-    if call_http_json is not None:
-        url = utils.compose_push_to_github_url(request, resource_id)
-        auth_token = copy.copy(kwargs.get('auth_token'))
-        data = {}
-        if auth_token is not None:
-            data['auth_token'] = auth_token
-        _LOG.debug('_deferred_push_to_gh_call({u}, {d})'.format(u=url, d=str(data)))
-        call_http_json.delay(url=url, verb='PUT', data=data)
-
-
-def compose_push_to_github_url(request, study_id):
-    if study_id is None:
-        return route_url('push', request)
-    return route_url('push_id', request, study_id=study_id)
-
-
-@view_config(route_name='push_id', renderer='json')
-@view_config(route_name='push', renderer='json')
-def push_to_github(request):
-    """OpenTree API methods relating to updating branches
-    curl -X POST http://localhost:8000/api/push/v1/9
-    """
-
-    # support JSONP request from another domain
-    phylesystem = request.registry.settings['phylesystem']
-    study_id = request.matchdict['study_id']
-
 
 
 '''
