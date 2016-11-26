@@ -38,7 +38,7 @@ _LOG = get_logger(__name__)
 
 class JobQueue(Queue):
     def put(self, item, block=None, timeout=None):
-        _LOG.debug("%s queued" % str(item.context_str))
+        _LOG.debug("%s queued" % str(item))
         Queue.put(self, item, block=block, timeout=timeout)
 
 _jobq = JobQueue()
@@ -92,7 +92,7 @@ def clear_push_failures(push_failure_dict_lock, push_failure_dict, umbrella):
 
 class GitPushJob(object):
     def __init__(self, request, umbrella, doc_id, operation, auth_info):
-        settings = request.registry
+        settings = request.registry.settings
         self.push_failure_dict_lock = settings['push_failure_lock']
         self.push_failure_dict = settings['doc_type_to_push_failure_list']
         self.doc_id = doc_id
@@ -674,7 +674,7 @@ def finish_write_operation(request, umbrella, document, put_args):
 def trigger_push(request, umbrella, doc_id, operation, auth_info):
     settings = request.registry.settings
     joq_queue = settings['job_queue']
-    gpj = GitPushJob(request=request, umbrella=umbrella, operation=operation, auth_info=auth_info)
+    gpj = GitPushJob(request=request, umbrella=umbrella, doc_id=doc_id, operation=operation, auth_info=auth_info)
     joq_queue.put(gpj)
 
 # TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
