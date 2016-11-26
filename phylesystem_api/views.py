@@ -109,10 +109,10 @@ class GitPushJob(object):
 
     def push_to_github(self):
         try:
-            self.umbrella.push_study_to_remote('GitHubRemote', self.doc_id)
+            self.umbrella.push_doc_to_remote('GitHubRemote', self.doc_id)
         except:
             m = traceback.format_exc()
-            msg = "Could not push {i} ! Details: {m}".format(i=doc_id, m=m)
+            msg = "Could not push {i} ! Details: {m}".format(i=self.doc_id, m=m)
             try:
                 add_push_failure(push_failure_dict_lock=self.push_failure_dict_lock,
                                  push_failure_dict=self.push_failure_dict,
