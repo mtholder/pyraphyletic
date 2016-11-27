@@ -11,7 +11,9 @@ from threading import Lock, Thread
 import bleach
 import markdown
 from github import Github, BadCredentialsException
-from peyotl import (NexsonDocSchema, GitWorkflowError, concatenate_collections, get_logger, create_doc_store_wrapper)
+from peyotl import (GitWorkflowError, concatenate_collections, get_logger, create_doc_store_wrapper,
+                    NexsonDocSchema,
+                    OTI)
 from peyotl.utility.imports import SafeConfigParser
 from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPForbidden,
                                     HTTPConflict, HTTPGatewayTimeout, HTTPInternalServerError)
@@ -90,6 +92,13 @@ def clear_push_failures(push_failure_dict_lock, push_failure_dict, umbrella):
         fl = push_failure_dict.setdefault(umbrella.document_type, [])
         del fl[:]
 
+def copy_of_push_failures(push_failure_dict_lock, push_failure_dict, umbrella):
+    with push_failure_dict_lock:
+        return copy.copy(push_failure_dict.setdefault(umbrella.document_type, []))
+
+def find_studies_by_doi(indexer_domain, study_doi):
+    oti_wrapper = OTI(domain=indexer_domain)
+    return oti_wrapper.find_studies_by_doi(study_doi)
 
 class GitPushJob(object):
     def __init__(self, request, umbrella, doc_id, operation, auth_info=None):
@@ -354,6 +363,17 @@ def render_markdown(request):
     return Response(h)
 
 
+@view_config(route_name='generic_push_failure', renderer='json')
+def push_failure(request):
+    umbrella = umbrella_from_request(request)
+    settings = request.registry.settings
+    pfd_lock = settings['push_failure_lock']
+    pfd = settings['doc_type_to_push_failure_list']
+    pf = copy_of_push_failures(push_failure_dict=pfd, push_failure_dict_lock=pfd_lock, umbrella=umbrella)
+    return {'doc_type': umbrella.document_type,
+            'pushes_succeeding': len(pf) == 0,
+            'errors': pf, }
+
 @view_config(route_name='generic_list', renderer='json')
 def generic_list(request):
     return umbrella_from_request(request).get_doc_ids()
@@ -581,6 +601,24 @@ def get_document(request):
                 result['external_url'] = umbrella.get_public_url(doc_id)
         except:
             _LOG.exception('populating of external_url failed for {}'.format(doc_id))
+        try:
+            result['shardName'] = umbrella.get_repo_and_path_fragmen(doc_id)[0]
+        except:
+            _LOG.exception('populating of shardName failed for {}'.format(doc_id))
+        if resource_type == 'study':
+            duplicate_study_ids = []
+            try:
+                study_doi = document_blob['nexml']['^ot:studyPublication']['@href']
+                oti_domain = request.registry.settings.get('oti_domain', 'https://api.opentreeoflife.org')
+                duplicate_study_ids = find_studies_by_doi(oti_domain, study_doi)
+                try:
+                    duplicate_study_ids.remove(doc_id)
+                except:
+                    pass
+            except:
+                _LOG.exception('Call to find_studies_by_doi failed')
+            if duplicate_study_ids:
+                result['duplicateStudyIDs'] = duplicate_study_ids
         return result
     request.override_renderer = 'string'
     return Response(body=result_data, content_type='text/plain')

@@ -80,6 +80,9 @@ def main(global_config, **settings):
     config.add_route('generic_push',
                      v_rt_prefix + '/push',
                      request_method='GET')
+    config.add_route('generic_push_failure',
+                     v_rt_prefix + '/push_failure',
+                     request_method='GET')
 
     # GET of entire resource
     config.add_route('get_study_via_id',
