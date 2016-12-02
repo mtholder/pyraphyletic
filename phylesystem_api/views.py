@@ -11,10 +11,13 @@ from threading import Lock, Thread
 import bleach
 import markdown
 from github import Github, BadCredentialsException
-from peyotl import (GitWorkflowError, concatenate_collections, get_logger, create_doc_store_wrapper,
+from peyotl import (add_cc0_waiver,
+                    concatenate_collections, create_doc_store_wrapper,
+                    get_logger, GitWorkflowError,
+                    import_nexson_from_crossref_metadata, import_nexson_from_treebase,
                     NexsonDocSchema,
-                    OTI)
-from peyotl.utility.imports import SafeConfigParser
+                    OTI,
+                    SafeConfigParser)
 from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPForbidden,
                                     HTTPConflict, HTTPGatewayTimeout, HTTPInternalServerError)
 from pyramid.response import Response
@@ -644,10 +647,76 @@ def put_collection_document(request):
     return put_document(request)
 
 
+def _make_valid_DOI(candidate):
+    # Try to convert the candidate string to a proper, minimal DOI. Return the DOI,
+    # or None if conversion is not possible.
+    #   WORKS: http://dx.doi.org/10.999...
+    #   WORKS: 10.999...
+    #   FAILS: 11.999...
+    #   WORKS: doi:10.999...
+    #   WORKS: DOI:10.999...
+    #   FAILS: http://example.com/
+    #   WORKS: http://example.com/10.blah
+    #   FAILS: something-else
+    # Remove all whitespace from the candidate string
+    candidate = ''.join(candidate.split())
+    # All existing DOIs use the directory indicator '10.', see
+    #   http://www.doi.org/doi_handbook/2_Numbering.html#2.2.2
+    doi_prefix = '10.'
+    if doi_prefix not in candidate:
+        return None
+    # remove anything before the first 10.
+    doi_parts = candidate.split(doi_prefix)
+    doi_parts[0] = ''
+    return doi_prefix.join(doi_parts[:])
+
 @view_config(route_name='post_study', renderer='json', request_method='POST')
 def post_study_document(request):
     request.matchdict['resource_type'] = 'study'
-    return post_document(request)
+    document, post_args = extract_write_args(request, study_post=True)
+    if post_args.get('doc_id') is None:
+        raise HTTPBadRequest(body='POST operation does not expect a URL that ends with a document ID')
+    umbrella = umbrella_from_request(request)
+    import_method = post_args['import_method']
+    nsv = umbrella.document_schema.schema_version
+    cc0_agreement = post_args['cc0_agreement']
+    publication_doi = post_args['publication_DOI']
+    if publication_doi:
+        # if a URL or something other than a valid DOI was entered, don't submit it to crossref API
+        publication_doi_for_crossref = _make_valid_DOI(publication_doi) or None
+    publication_ref = post_args['publication_reference']
+    if import_method == 'import-method-TREEBASE_ID':
+        treebase_id = post_args['treebase_id']
+        if not treebase_id:
+            msg = "A treebase_id argument is required when import_method={}".format(import_method)
+            raise HTTPBadRequest(body=msg)
+        try:
+            treebase_number = int(treebase_id.upper().lstrip('S'))
+        except:
+            msg = 'Invalid treebase_id="{}"'.format(treebase_id)
+            raise HTTPBadRequest(body=msg)
+        try:
+            document = import_nexson_from_treebase(treebase_number, nexson_syntax_version=nsv)
+        except Exception as e:
+            msg = "Unexpected error parsing the file obtained from TreeBASE. " \
+                  "Please report this bug to the Open Tree of Life developers."
+            raise HTTPBadRequest(body=msg)
+    elif import_method == 'import-method-PUBLICATION_DOI' or import_method == 'import-method-PUBLICATION_REFERENCE':
+        if not (publication_ref or publication_doi_for_crossref):
+            msg = 'Did not find a valid DOI in "publication_DOI" or a reference in "publication_reference" arguments.'
+            raise HTTPBadRequest(body=msg)
+        document = import_nexson_from_crossref_metadata(doi=publication_doi_for_crossref,
+                                                        ref_string=publication_ref,
+                                                        include_cc0=cc0_agreement)
+    elif import_method == 'import-method-POST':
+        if not document:
+            msg = 'Could not read a NexSON from the body of the POST, but import_method="import-method-POST" was used.'
+            raise HTTPBadRequest(body=msg)
+    else:
+        document = umbrella.document_schema.create_empty_doc()
+        if cc0_agreement:
+            add_cc0_waiver(nexson=document)
+    return finish_write_operation(request, umbrella, document, post_args)
 
 
 @view_config(route_name='post_taxon_amendment', renderer='json', request_method='POST')
@@ -667,7 +736,7 @@ _RESOURCE_TYPE_2_DATA_JSON_ARG = {'study': 'nexson',
                                   'tree_collections': 'json'}
 
 
-def extract_write_args(request):
+def extract_write_args(request, study_post=False):
     """Helper for a write-verb views. Joins params, matchdict and the JSON body
     of the request into a dict with keys:
         `auth_info`: {'login': gh-username,
@@ -680,6 +749,13 @@ def extract_write_args(request):
         'merged_SHA',
         'doc_id' ID (required for PUT, but not POST)
         'resource_type'
+    if study_post is True, the following string-valued keys will also be found
+        'import_method'
+        'import_from_location', 'treebase_id',  'nexml_fetch_url', 'nexml_pasted_string',
+        'publication_DOI', 'publication_reference',)
+
+        cc0_agreement ==> bool (kwargs.get('chosen_license', '') == 'apply-new-CC0-waiver' and
+                             kwargs.get('cc0_agreement'
     raises Forbidden if auth fails
     """
     culled_params = {}
@@ -700,9 +776,20 @@ def extract_write_args(request):
     except:
         pass
     culled_params['auth_info'] = authenticate(**params)
-    for key in ('starting_commit_SHA', 'commit_msg', 'merged_SHA', 'doc_id', 'resource_type'):
-        val = params.get(key)
-        culled_params[key] = val
+    str_key_list = ('starting_commit_SHA', 'commit_msg', 'merged_SHA', 'doc_id', 'resource_type', )
+    if study_post:
+        additional_str_key = ('import_method', 'import_from_location', 'treebase_id',  'nexml_fetch_url',
+                              'nexml_pasted_string', 'publication_DOI', 'publication_reference')
+        cc0 = ((params.get('chosen_license', '') == 'apply-new-CC0-waiver')
+               and (kwargs.get('cc0_agreement', '') == 'true'))
+        culled_params['cc0_agreement'] = cc0
+    else:
+        additional_str_key = []
+    for key in str_key_list:
+        culled_params[key] = params.get(key)
+    for key in additional_str_key:
+        culled_params[key] = params.get(key)
+
     document_object = _extract_json_obj_from_http_call(request, data_kwarg_key=data_kwarg_key)
     _LOG.debug('culled_params = {}'.format(culled_params))
     return document_object, culled_params
@@ -735,8 +822,8 @@ def finish_write_operation(request, umbrella, document, put_args):
     resource_type = put_args['resource_type']
     commit_msg = put_args.get('commit_msg')
     merged_sha = put_args.get('merged_SHA')
-    lmsg = 'PUT of {} with doc id = {} for starting_commit_SHA = {} and merged_SHA = {}'
-    _LOG.debug(lmsg.format(resource_type, doc_id, parent_sha, merged_sha))
+    lmsg = '{} of {} with doc id = {} for starting_commit_SHA = {} and merged_SHA = {}'
+    _LOG.debug(lmsg.format(request.method, resource_type, doc_id, parent_sha, merged_sha))
     bundle = umbrella.validate_and_convert_doc(document, put_args)
     processed_doc, errors, annotation, doc_adaptor = bundle
     if len(errors) > 0:
