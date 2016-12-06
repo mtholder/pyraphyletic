@@ -83,7 +83,6 @@ def main(global_config, **settings):
     config.add_route('generic_push_failure',
                      v_rt_prefix + '/push_failure',
                      request_method='GET')
-
     # GET of entire resource
     config.add_route('get_study_via_id',
                      v_prefix + '/study/' + study_id_frag,
@@ -137,11 +136,27 @@ def main(global_config, **settings):
     config.add_route('options_generic',
                      v_rt_prefix + '/',
                      request_method='OPTIONS')
+    # push methods need the doc id (oddly enough)
+    config.add_route('push_study_via_id',
+                     v_prefix + '/push/study/' + study_id_frag,
+                     request_method='PUT')
+    config.add_route('push_taxon_amendment_via_id',
+                     v_prefix + '/push/amendment/' + amendment_id_frag,
+                     request_method='PUT')
+    config.add_route('push_tree_collection_via_id',
+                     v_prefix + '/push/collection/' + collection_id_frag,
+                     request_method='PUT')
 
+    # Methods pertaining to the set of trees currently in synth
     config.add_route('trees_in_synth',
                      v_prefix + '/trees_in_synth',
                      request_method="GET")
-
+    config.add_route('include_tree_in_synth',
+                     v_prefix + '/include_tree_in_synth',
+                     request_method="POST")
+    config.add_route('exclude_tree_from_synth',
+                     v_prefix + '/include_tree_in_synth',
+                     request_method="POST")
 
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
