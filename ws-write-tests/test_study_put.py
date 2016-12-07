@@ -24,10 +24,12 @@ if not r[0]:
 study_id = r[1][0]
 A_STUDY_URI = A_STUDY_URI + '/' + study_id
 # Put of empty data should result in 400
-if not test_http_json_method(A_STUDY_URI,
-                             'PUT',
-                             data,
-                             expected_status=400):
+r = test_http_json_method(A_STUDY_URI,
+                          'PUT',
+                          data,
+                          expected_status=400)
+print(r)
+if not r:
     sys.exit(1)
 
 DOMAIN, auth_token = writable_api_host_and_oauth_or_exit(__file__)

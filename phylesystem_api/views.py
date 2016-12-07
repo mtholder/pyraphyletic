@@ -1029,19 +1029,19 @@ def finish_write_operation(request, umbrella, document, put_args):
 
 
 @view_config(route_name='delete_study_via_id', renderer='json', request_method='DELETE')
-def put_study_document(request):
+def delete_study_document(request):
     request.matchdict['resource_type'] = 'study'
     return delete_document(request)
 
 
 @view_config(route_name='delete_taxon_amendment_via_id', renderer='json', request_method='DELETE')
-def put_amendment_document(request):
+def delete_amendment_document(request):
     request.matchdict['resource_type'] = 'taxon_amendments'
     return delete_document(request)
 
 
 @view_config(route_name='delete_tree_collection_via_id', renderer='json', request_method='DELETE')
-def put_collection_document(request):
+def delete_collection_document(request):
     request.matchdict['resource_type'] = 'tree_collections'
     u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
     request.matchdict['doc_id'] = '/'.join(u_c)
@@ -1062,7 +1062,6 @@ def delete_document(request):
         raise httpexcept(HTTPInternalServerError, err.msg)
     except:
         _LOG.exception('Exception getting document {} in DELETE'.format(doc_id))
-        raise httpexcept(HTTPBadRequest, 'Unknown error in document deletion')
     else:
         if x.get('error') == 0:
             trigger_push(request, umbrella=umbrella, doc_id=doc_id, operation="DELETE", auth_info=auth_info)
