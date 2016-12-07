@@ -28,7 +28,6 @@ r = test_http_json_method(A_STUDY_URI,
                           'PUT',
                           data,
                           expected_status=400)
-print(r)
 if not r:
     sys.exit(1)
 
