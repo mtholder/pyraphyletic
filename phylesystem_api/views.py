@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 
 import copy
+import itertools
 import json
 import os
 import traceback
-import requests
 from Queue import Queue
 from threading import Lock, Thread
-import itertools
+
 import bleach
 import markdown
+import requests
+# noinspection PyPackageRequirements
 from github import Github, BadCredentialsException
 from peyotl import (add_cc0_waiver,
                     concatenate_collections, create_doc_store_wrapper,
@@ -18,7 +20,7 @@ from peyotl import (add_cc0_waiver,
                     import_nexson_from_crossref_metadata, import_nexson_from_treebase,
                     NexsonDocSchema,
                     OTI,
-                    SafeConfigParser)
+                    SafeConfigParser, StringIO)
 from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPForbidden,
                                     HTTPConflict, HTTPGatewayTimeout, HTTPInternalServerError)
 from pyramid.response import Response
@@ -41,7 +43,6 @@ _RESOURCE_TYPE_2_SETTINGS_UMBRELLA_KEY = {'phylesystem': 'phylesystem',
                                           'collection': 'tree_collections',
                                           }
 
-_LOG = get_logger(__name__)
 
 
 class JobQueue(Queue):
@@ -212,6 +213,18 @@ def fill_app_settings(settings):
     settings['job_queue'] = _jobq
 
 
+def get_phylesystem_doc_store(request):
+    return request.registry.settings["phylesystem"]
+
+
+def get_taxon_amendments_doc_store(request):
+    return request.registry.settings["taxon_amendments"]
+
+
+def get_tree_collections_doc_store(request):
+    return request.registry.settings["tree_collections"]
+
+
 def err_body(description):
     err = {'error': 1,
            'description': description}
@@ -250,7 +263,7 @@ def authenticate(**kwargs):
     return auth_info
 
 
-def _extract_json_obj_from_http_call(request, data_kwarg_key, **kwargs):
+def _extract_json_obj_from_http_call(request, data_kwarg_key, exception_if_absent=True, **kwargs):
     """Returns the JSON object from `kwargs` or the request.body"""
     try:
         # check for kwarg 'nexson', or load the full request body
@@ -263,6 +276,8 @@ def _extract_json_obj_from_http_call(request, data_kwarg_key, **kwargs):
         if data_kwarg_key in json_blob:
             json_blob = json_blob[data_kwarg_key]
     except:
+        if not exception_if_absent:
+            return None
         msg = 'Could not extract JSON argument from {} or body'.format(data_kwarg_key)
         _LOG.exception(msg)
         raise httpexcept(HTTPBadRequest, msg)
@@ -320,7 +335,7 @@ def extract_posted_data(request):
         return request.params
     if request.text:
         return json.loads(request.text)
-    raise httpexcept(HTTPBadRequest, "no POSTed data", explanation='No data obtained from POST')
+    raise httpexcept(HTTPBadRequest, "no POSTed data")
 
 
 def get_ids_of_synth_collections():
@@ -378,6 +393,7 @@ def _synth_coll_helper(request):
 def trees_in_synth(request):
     return _synth_coll_helper(request)[3]
 
+
 def _coll_args_helper(request):
     data = extract_posted_data(request)
     try:
@@ -389,6 +405,7 @@ def _coll_args_helper(request):
         raise httpexcept(HTTPBadRequest, "Expecting study_id and tree_id arguments")
     auth_info = authenticate(**data)
     return data, study_id, tree_id, auth_info
+
 
 @view_config(route_name='include_tree_in_synth', renderer='json')
 def include_tree_from_synth(request):
@@ -801,7 +818,7 @@ def push_document(request):
     return generic_push(request, doc_id=request.matchdict['doc_id'])
 
 
-def _make_valid_DOI(candidate):
+def _make_valid_doi(candidate):
     # Try to convert the candidate string to a proper, minimal DOI. Return the DOI,
     # or None if conversion is not possible.
     #   WORKS: http://dx.doi.org/10.999...
@@ -828,7 +845,7 @@ def _make_valid_DOI(candidate):
 @view_config(route_name='post_study', renderer='json', request_method='POST')
 def post_study_document(request):
     request.matchdict['resource_type'] = 'study'
-    document, post_args = extract_write_args(request, study_post=True)
+    document, post_args = extract_write_args(request, study_post=True, require_document=False)
     if post_args.get('doc_id') is None:
         raise httpexcept(HTTPBadRequest, 'POST operation does not expect a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
@@ -836,9 +853,10 @@ def post_study_document(request):
     nsv = umbrella.document_schema.schema_version
     cc0_agreement = post_args['cc0_agreement']
     publication_doi = post_args['publication_DOI']
+    publication_doi_for_crossref = None
     if publication_doi:
         # if a URL or something other than a valid DOI was entered, don't submit it to crossref API
-        publication_doi_for_crossref = _make_valid_DOI(publication_doi) or None
+        publication_doi_for_crossref = _make_valid_doi(publication_doi) or None
     publication_ref = post_args['publication_reference']
     if import_method == 'import-method-TREEBASE_ID':
         treebase_id = post_args['treebase_id']
@@ -891,7 +909,7 @@ _RESOURCE_TYPE_2_DATA_JSON_ARG = {'study': 'nexson',
                                   'tree_collections': 'json'}
 
 
-def extract_write_args(request, study_post=False):
+def extract_write_args(request, study_post=False, require_document=True):
     """Helper for a write-verb views. Joins params, matchdict and the JSON body
     of the request into a dict with keys:
         `auth_info`: {'login': gh-username,
@@ -936,7 +954,7 @@ def extract_write_args(request, study_post=False):
         additional_str_key = ('import_method', 'import_from_location', 'treebase_id', 'nexml_fetch_url',
                               'nexml_pasted_string', 'publication_DOI', 'publication_reference')
         cc0 = ((params.get('chosen_license', '') == 'apply-new-CC0-waiver')
-               and (kwargs.get('cc0_agreement', '') == 'true'))
+               and (params.get('cc0_agreement', '') == 'true'))
         culled_params['cc0_agreement'] = cc0
     else:
         additional_str_key = []
@@ -945,7 +963,9 @@ def extract_write_args(request, study_post=False):
     for key in additional_str_key:
         culled_params[key] = params.get(key)
 
-    document_object = _extract_json_obj_from_http_call(request, data_kwarg_key=data_kwarg_key)
+    document_object = _extract_json_obj_from_http_call(request,
+                                                       data_kwarg_key=data_kwarg_key,
+                                                       exception_if_absent=require_document)
     _LOG.debug('culled_params = {}'.format(culled_params))
     return document_object, culled_params
 
@@ -1006,6 +1026,47 @@ def finish_write_operation(request, umbrella, document, put_args):
     if (mn is not None) and (not mn):
         trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
     return annotated_commit
+
+
+@view_config(route_name='delete_study_via_id', renderer='json', request_method='DELETE')
+def put_study_document(request):
+    request.matchdict['resource_type'] = 'study'
+    return delete_document(request)
+
+
+@view_config(route_name='delete_taxon_amendment_via_id', renderer='json', request_method='DELETE')
+def put_amendment_document(request):
+    request.matchdict['resource_type'] = 'taxon_amendments'
+    return delete_document(request)
+
+
+@view_config(route_name='delete_tree_collection_via_id', renderer='json', request_method='DELETE')
+def put_collection_document(request):
+    request.matchdict['resource_type'] = 'tree_collections'
+    u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
+    request.matchdict['doc_id'] = '/'.join(u_c)
+    return delete_document(request)
+
+def delete_document(request):
+    args = extract_write_args(request, require_document=False)[1]
+    parent_sha = args['starting_commit_SHA']
+    if parent_sha is None:
+        raise httpexcept(HTTPBadRequest, 'Expecting a "starting_commit_SHA" argument with the SHA of the parent')
+    commit_msg = args['commit_msg']
+    auth_info = args['auth_info']
+    doc_id = args['doc_id']
+    umbrella = umbrella_from_request(request)
+    try:
+        x = umbrella.delete_document(doc_id, auth_info, parent_sha, commit_msg=commit_msg)
+    except GitWorkflowError, err:
+        raise httpexcept(HTTPInternalServerError, err.msg)
+    except:
+        _LOG.exception('Exception getting document {} in DELETE'.format(doc_id))
+        raise httpexcept(HTTPBadRequest, 'Unknown error in document deletion')
+    else:
+        if x.get('error') == 0:
+            trigger_push(request, umbrella=umbrella, doc_id=doc_id, operation="DELETE", auth_info=auth_info)
+        return x
 
 
 def trigger_push(request, umbrella, doc_id, operation, auth_info=None):
@@ -1088,19 +1149,38 @@ def study_options(request):
 
 
 def _harvest_study_ids_from_paths(path_list):
-    rs = {}
+    rs = set()
     for path in path_list:
         path_parts = path.split('/')
         if path_parts[0] == "study":
             # skip any intermediate directories in docstore repo
-            study_id = path_parts[ len(path_parts) - 2 ]
+            study_id = path_parts[len(path_parts) - 2]
             rs.add(study_id)
     return rs
+
+
+def _harvest_ott_ids_from_paths(path_list):
+    rs = set()
+    for path in path_list:
+        path_parts = path.split('/')
+        # ignore changes to counter file, other directories, etc.
+        if path_parts[0] == "amendments":
+            # skip intermediate directories in docstore repo
+            amendment_file_name = path_parts.pop()
+            ott_id = amendment_file_name[:-5]
+            rs.add(ott_id)
+    return rs
+
 
 def get_otindex_base_url(request):
     return 'hardcoded incorrect URL'
 
-def nudgeStudyIndexOnUpdates(request):
+def format_gh_webhook_response(url, msg):
+    full_msg = """This URL should be called by a webhook set in the docstore repo:
+        <br /><br /><a href="{g}">{g}</a><br /><pre>{m}</pre>"""
+    return full_msg.format(g=url, m=msg)
+
+def nudge_study_index(request):
     """"Support method to update oti index in response to GitHub webhooks
 
     This examines the JSON payload of a GitHub webhook to see which studies have
@@ -1113,22 +1193,11 @@ def nudgeStudyIndexOnUpdates(request):
     N.B. This depends on a GitHub webhook on the chosen docstore.
     """
     payload = request.vars
-    try:
-        # how we nudge the index depends on which studies are new, changed, or deleted
-        added_study_ids = {}
-        modified_study_ids = {}
-        removed_study_ids = {}
-        # TODO: Should any of these lists override another? maybe use commit timestamps
-        # to "trump" based on later operations?
-        for commit in payload['commits']:
-            added_study_ids |= _harvest_study_ids_from_paths(commit['added'])
-            modified_study_ids |= _harvest_study_ids_from_paths(commit['modified'])
-            removed_study_ids |= _harvest_study_ids_from_paths(commit['removed'])
-    except:
-        raise httpexcept(HTTPBadRequest, "malformed GitHub payload")
-    sds = request.registry.settings["study"]
+    add_or_update_ids, modified, remove_ids = github_payload_to_amr(payload, _harvest_study_ids_from_paths)
+    add_or_update_ids.add(modified)
+    sds = get_phylesystem_doc_store(request)
     # this check will not be sufficient if we have multiple shards
-    opentree_docstore_url = sds.get_remote_docstore_url
+    opentree_docstore_url = sds.remote_docstore_url
     if payload['repository']['url'] != opentree_docstore_url:
         raise httpexcept(HTTPBadRequest, "wrong repo for this API instance")
     otindex_base_url = get_otindex_base_url(request)
@@ -1140,9 +1209,7 @@ def nudgeStudyIndexOnUpdates(request):
     # TODO: check returned IDs against our original list... what if something failed?
 
     github_webhook_url = "{}/settings/hooks".format(opentree_docstore_url)
-    full_msg = """This URL should be called by a webhook set in the docstore repo:
-    <br /><br /><a href="{}">{}</a><br /><pre>{}</pre>"""
-    full_msg = full_msg.format(github_webhook_url, github_webhook_url, msg)
+    full_msg = format_gh_webhook_response(github_webhook_url, msg)
     if msg:
         raise httpexcept(HTTPInternalServerError, full_msg)
     return full_msg
@@ -1161,13 +1228,88 @@ def do_http_post_json(url, data=None):
 
 def _otindex_call(study_ids, otindex_base_url, oti_verb):
     nudge_url = "{o}/v3/studies/{v}".format(o=otindex_base_url, v=oti_verb)
-    payload = {"studies" : study_ids}
+    payload = {"studies": study_ids}
     response = do_http_post_json(nudge_url, data=payload)
     if response['failed_studies']:
         msg = "Could not {v} following studies: {s}".format(s=", ".join(response['failed_studies']), v=oti_verb)
         _LOG.debug(msg)
         return msg
     return ''
+
+
+def github_payload_to_amr(payload, path_to_id_fn):
+    """Parses the set of commits in a GitHub webhook payload into sets of IDs corresponding to:
+    (added_id_set, modified_id_set, removed_id_set).
+
+    `path_to_id_fn` should be a function that is capable of taking a list of paths and returning
+        the set of IDs referred to by the element in the list.
+    """
+    added = {}
+    modified = {}
+    removed = {}
+    try:
+        for commit in payload['commits']:
+            added |= path_to_id_fn(commit['added'])
+            modified |= path_to_id_fn(commit['modified'])
+            removed |= path_to_id_fn(commit['removed'])
+    except:
+        raise httpexcept(HTTPBadRequest, "malformed GitHub payload")
+    return added, modified, removed
+
+
+def get_taxonomy_api_base_url(request):
+    return request.registry.settings['taxonomy_api_base_url']
+
+
+def nudge_taxon_index(request):
+    """"Support method to update taxon index (taxomachine) in response to GitHub webhooks
+
+    This examines the JSON payload of a GitHub webhook to see which taxa have
+    been added, modified, or removed. Then it calls the appropriate index service to
+    (re)index these taxa, or to delete a taxon's information if it was deleted in
+    an amendment.
+
+    TODO: Clear any cached taxon list.
+
+    N.B. This depends on a GitHub webhook on the taxonomic-amendments docstore!
+    """
+    payload = request.vars
+    tads = get_taxon_amendments_doc_store(request)
+    amendments_repo_url = tads.remote_docstore_url
+    if payload['repository']['url'] != amendments_repo_url:
+        raise httpexcept(HTTPBadRequest, "wrong repo for this API instance")
+    added_ids, modified_ids, removed_ids = github_payload_to_amr(payload, _harvest_ott_ids_from_paths)
+    msg_list = []
+    # build a working URL, gather amendment body, and nudge the index!
+    amendments_api_base_url = get_taxonomy_api_base_url(request)
+    nudge_url = "{b}v3/taxonomy/process_additions".format(b=amendments_api_base_url)
+    for doc_id in added_ids:
+        try:
+            amendment_blob = tads.return_document(doc_id=doc_id)[0]
+        except:
+            msg_list.append("retrieval of {} failed".format(doc_id))
+        else:
+            # Extra weirdness required here, as neo4j needs an encoded *string*
+            # of the amendment JSON, within a second JSON wrapper :-/
+            postable_blob = {"addition_document": json.dumps(amendment_blob)}
+            postable_string = json.dumps(postable_blob)
+            try:
+                do_http_post_json(url=nudge_url, data=postable_string)
+            except:
+                msg_list.append("nudge of taxonomy processor failed for {}".format(doc_id))
+    # LATER: add handlers for modified and removed taxa?
+    if modified_ids:
+        raise httpexcept(HTTPBadRequest, "We don't currently re-index modified taxa!")
+    if removed_ids:
+        raise httpexcept(HTTPBadRequest, "We don't currently re-index removed taxa!")
+    # N.B. If we had any cached amendment results, we'd clear them now
+    # api_utils.clear_matching_cache_keys(...)
+    github_webhook_url = "{}/settings/hooks".format(amendments_repo_url)
+    msg = '\n'.join(msg_list)
+    full_msg = format_gh_webhook_response(github_webhook_url, msg)
+    if msg == '':
+        return full_msg
+    raise httpexcept(HTTPInternalServerError, full_msg)
 
 
 # The portion of this file that deals with the jobq and thread-safe

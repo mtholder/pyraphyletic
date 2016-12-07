@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-import sys, os
+import sys
+
 from opentreetesting import test_http_json_method, config
+
 DOMAIN = config('host', 'apihost')
 # backwards compat, support "list_all"
 SUBMIT_URI = DOMAIN + '/v3/collections/find_collections'

@@ -13,23 +13,23 @@ requires = [
     'pyramid_chameleon',
     'pyramid_debugtoolbar',
     'waitress',
-    ]
+]
 tests_require = [
     'WebTest >= 1.3.1',  # py3 compat
     'pytest',  # includes virtualenv
     'pytest-cov',
-    ]
+]
 
 setup(name='phylesystem_api',
       version='0.0',
       description='phylesystem_api',
       long_description=README + '\n\n' + CHANGES,
       classifiers=[
-        "Programming Language :: Python",
-        "Framework :: Pyramid",
-        "Topic :: Internet :: WWW/HTTP",
-        "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
-        ],
+          "Programming Language :: Python",
+          "Framework :: Pyramid",
+          "Topic :: Internet :: WWW/HTTP",
+          "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+      ],
       author='',
       author_email='',
       url='',
@@ -39,7 +39,7 @@ setup(name='phylesystem_api',
       zip_safe=False,
       install_requires=requires,
       tests_require=tests_require,
-      extras_require={'testing': tests_require,},
+      extras_require={'testing': tests_require, },
       test_suite="phylesystem_api",
       entry_points="""\
       [paste.app_factory]

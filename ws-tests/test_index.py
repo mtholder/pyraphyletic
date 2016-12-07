@@ -7,6 +7,7 @@ from phylesystem_api.tests import check_index_response
 DOMAIN = config('host', 'apihost')
 pre_v = re.compile(r'^(.+)/v[0-9]+')
 
+
 class TestIndex(unittest.TestCase):
     def test_index(self):
         global DOMAIN
@@ -18,9 +19,11 @@ class TestIndex(unittest.TestCase):
         self.assertTrue(r[0])
         check_index_response(self, r[1])
 
+
 if __name__ == '__main__':
     # TODO: argv hacking only necessary because of the funky invocation of the test from
     # germinator/ws-tests/run_tests.sh
     import sys
+
     sys.argv = sys.argv[:1]
     unittest.main()

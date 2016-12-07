@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-import sys, os
+import sys
+
 from opentreetesting import test_http_json_method, config
+
 DOMAIN = config('host', 'apihost')
 # this amendment does not exist
 SUBMIT_URI = DOMAIN + '/v3/amendment/additions-0000000-99999999'

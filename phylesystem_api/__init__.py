@@ -114,6 +114,16 @@ def main(global_config, **settings):
     config.add_route('put_tree_collection_via_id',
                      v_prefix + '/collection/' + collection_id_frag,
                      request_method='PUT')
+    # DELETE methods need the doc id
+    config.add_route('delete_study_via_id',
+                     v_prefix + '/study/' + study_id_frag,
+                     request_method='DELETE')
+    config.add_route('delete_taxon_amendment_via_id',
+                     v_prefix + '/amendment/' + amendment_id_frag,
+                     request_method='DELETE')
+    config.add_route('delete_tree_collection_via_id',
+                     v_prefix + '/collection/' + collection_id_frag,
+                     request_method='DELETE')
     # POST methods don't need the doc id
     config.add_route('post_study',
                      v_prefix + '/study/',
@@ -124,6 +134,7 @@ def main(global_config, **settings):
     config.add_route('post_tree_collection',
                      v_prefix + '/collection/',
                      request_method='POST')
+    # OPTIONS with and without ID
     config.add_route('options_study_id',
                      v_prefix + '/study/' + study_id_frag,
                      request_method='OPTIONS')
@@ -146,7 +157,6 @@ def main(global_config, **settings):
     config.add_route('push_tree_collection_via_id',
                      v_prefix + '/push/collection/' + collection_id_frag,
                      request_method='PUT')
-
     # Methods pertaining to the set of trees currently in synth
     config.add_route('trees_in_synth',
                      v_prefix + '/trees_in_synth',
@@ -167,19 +177,12 @@ def main(global_config, **settings):
     config.add_route('fetch_all_amendments', v_prefix + '/amendments/list_all')
     config.add_route('fetch_all_collections', v_prefix + '/collections/find_collections')
 
-
-    skip = '''
-        config.add_route('get_sub', vstr + 'study/{study_id}/{subresource}')
-        config.add_route('get_sub_id', vstr + 'study/{study_id}/{subresource}/{subresource_id}')
-        config.add_route('post_study_id', vstr + 'study/{study_id}')
-        config.add_route('post_study', vstr + 'study')
-        config.add_route('push_id', vstr + 'push/{study_id}')
-        config.add_route('put_study_id', vstr + 'study/{study_id}')
-        config.add_route('delete_study_id', vstr + 'study/{study_id}')
-        config.add_route('options_study_id', vstr + 'study/{study_id}')
-        config.add_route('search', vstr + 'search/{kind}/{property_name}/{search_term}')
-        config.add_route('nudge_indexers', vstr + 'nudgeIndexOnUpdates')
-        config.add_route('merge_id', vstr + 'merge')
-        '''
+    # methods called by GitHub webhooks
+    config.add_route('nudge_study_index',
+                     'search/nudgeStudyIndexOnUpdates',
+                     request_method="POST")
+    config.add_route('nudge_taxon_index',
+                     'search/nudgeTaxonIndexOnUpdates',
+                     request_method="POST")
     config.scan()
     return config.make_wsgi_app()
