@@ -54,6 +54,7 @@ def main(global_config, **settings):
     phylesystem = settings['phylesystem']
     taxon_amendments = settings['taxon_amendments']
     tree_collections = settings['tree_collections']
+    _LOG.debug('ID of tree_collections = {}'.format(id(tree_collections)))
     study_id_frag = "{doc_id:" + phylesystem.id_regex.pattern + "}"
     study_id_ext_frag = "{doc_id:" + phylesystem.id_regex.pattern + "[.][a-z]+}"
     amendment_id_frag = "{doc_id:" + taxon_amendments.id_regex.pattern + "}"

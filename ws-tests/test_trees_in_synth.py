@@ -11,4 +11,3 @@ if not r[0]:
     sys.stderr.write("Note that the test trees_in_synth.py will fail if your test collections repo does not have " \
                      "collections that have the same IDs as the collections currently used in synthesis.\n")
     sys.exit(1)
-#print(r[1])

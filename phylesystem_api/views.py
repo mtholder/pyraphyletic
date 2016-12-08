@@ -13,21 +13,43 @@ from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPInternalSe
 from pyramid.response import Response
 from pyramid.view import view_config
 from phylesystem_api.utility import (append_tree_to_collection_helper,
-                                     collection_args_helper, copy_of_push_failures,
+                                     collection_args_helper, concatenate_collections,
+                                     copy_of_push_failures, create_list_of_collections,
                                      do_http_post_json,
                                      err_body, extract_write_args, extract_posted_data,
                                      find_studies_by_doi, format_gh_webhook_response,
+                                     get_ids_of_synth_collections,
                                      get_otindex_base_url, get_taxonomy_api_base_url,
                                      get_phylesystem_doc_store, get_taxon_amendments_doc_store,
                                      get_tree_collections_doc_store,
                                      GitPushJob, github_payload_to_amr,
                                      httpexcept, harvest_ott_ids_from_paths, harvest_study_ids_from_paths,
                                      make_valid_doi, otindex_call,
-                                     subresource_request_helper, synth_collection_helper,
+                                     subresource_request_helper,
                                      trigger_push,
                                      umbrella_from_request, umbrella_with_id_from_request)
 
 _LOG = get_logger(__name__)
+
+
+def synth_collection_helper(request):
+    """Returns tuple of four elements:
+        [0] tree_collection_doc_store,
+        [1] list of the synth collection IDs
+        [2] a list of each of the synth collection objects in the same order as coll_id_list
+        [3] a collection that is a concatenation of synth collections
+    """
+    coll_id_list = get_ids_of_synth_collections()
+    cds = get_tree_collections_doc_store(request)
+    _LOG.debug('ID of tree_collections = {}'.format(id(cds)))
+    coll_list = create_list_of_collections(cds, coll_id_list)
+    try:
+        concat = concatenate_collections(coll_list)
+    except:
+        msg = 'concatenation of collections failed'
+        _LOG.exception(msg)
+        return HTTPInternalServerError(body=msg)
+    return cds, coll_id_list, coll_list, concat
 
 
 @view_config(route_name='trees_in_synth', renderer='json')
@@ -36,7 +58,7 @@ def trees_in_synth(request):
 
 
 @view_config(route_name='include_tree_in_synth', renderer='json')
-def include_tree_from_synth(request):
+def include_tree_in_synth(request):
     data, study_id, tree_id, auth_info = collection_args_helper(request)
     # examine this study and tree, to confirm it exists *and* to capture its name
     sds = get_phylesystem_doc_store(request)
@@ -267,21 +289,26 @@ def get_document(request):
         except:
             _LOG.exception('populating of external_url failed for {}'.format(doc_id))
         try:
-            result['shardName'] = umbrella.get_repo_and_path_fragmen(doc_id)[0]
+            result['shardName'] = umbrella.get_repo_and_path_fragment(doc_id)[0]
         except:
             _LOG.exception('populating of shardName failed for {}'.format(doc_id))
         if resource_type == 'study':
             duplicate_study_ids = []
             try:
                 study_doi = document_blob['nexml']['^ot:studyPublication']['@href']
-                oti_domain = get_otindex_base_url(request)
-                duplicate_study_ids = find_studies_by_doi(oti_domain, study_doi)
-                try:
-                    duplicate_study_ids.remove(doc_id)
-                except:
-                    pass
             except:
-                _LOG.exception('Call to find_studies_by_doi failed')
+                pass # no DOI
+            else:
+                try:
+                    oti_domain = get_otindex_base_url(request)
+                    duplicate_study_ids = find_studies_by_doi(oti_domain, study_doi)
+                except:
+                    _LOG.exception('Call to find_studies_by_doi failed')
+                else:
+                    try:
+                        duplicate_study_ids.remove(doc_id)
+                    except:
+                        pass
             if duplicate_study_ids:
                 result['duplicateStudyIDs'] = duplicate_study_ids
         return result

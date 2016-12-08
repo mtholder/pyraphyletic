@@ -563,25 +563,6 @@ def create_list_of_collections(cds, coll_id_list):
     return coll_list
 
 
-def synth_collection_helper(request):
-    """Returns tuple of four elements:
-        [0] tree_collection_doc_store,
-        [1] list of the synth collection IDs
-        [2] a list of each of the synth collection objects in the same order as coll_id_list
-        [3] a collection that is a concatenation of synth collections
-    """
-    coll_id_list = get_ids_of_synth_collections()
-    cds = request.registry.settings['tree_collections']
-    coll_list = create_list_of_collections(cds, coll_id_list)
-    try:
-        concat = concatenate_collections(coll_list)
-    except:
-        msg = 'concatenation of collections failed'
-        _LOG.exception(msg)
-        return HTTPInternalServerError(body=msg)
-    return cds, coll_id_list, coll_list, concat
-
-
 def collection_args_helper(request):
     data = extract_posted_data(request)
     try:
