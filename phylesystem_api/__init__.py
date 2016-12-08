@@ -2,7 +2,7 @@
 from pyramid.config import Configurator
 from pyramid.request import Request
 from pyramid.request import Response
-from phylesystem_api.views import fill_app_settings
+from phylesystem_api.utility import fill_app_settings
 import logging
 
 _LOG = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def main(global_config, **settings):
     """
     _LOG.debug('main running from "{}" and called with "{}"'.format(global_config['here'],
                                                                     global_config['__file__']))
-    from phylesystem_api.views import get_resource_type_to_umbrella_name_copy
+    from phylesystem_api.utility import get_resource_type_to_umbrella_name_copy
     fill_app_settings(settings)
     config = Configurator(settings=settings)
     config.include('pyramid_chameleon')

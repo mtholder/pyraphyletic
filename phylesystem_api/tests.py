@@ -2,7 +2,7 @@ import unittest
 import os
 
 from pyramid import testing
-from phylesystem_api.views import fill_app_settings
+from phylesystem_api.utility import fill_app_settings
 
 
 def get_app_settings_for_testing(settings):
