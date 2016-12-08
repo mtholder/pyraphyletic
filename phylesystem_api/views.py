@@ -19,6 +19,7 @@ from phylesystem_api.utility import (append_tree_to_collection_helper,
                                      find_studies_by_doi, format_gh_webhook_response,
                                      get_otindex_base_url, get_taxonomy_api_base_url,
                                      get_phylesystem_doc_store, get_taxon_amendments_doc_store,
+                                     get_tree_collections_doc_store,
                                      GitPushJob, github_payload_to_amr,
                                      httpexcept, harvest_ott_ids_from_paths, harvest_study_ids_from_paths,
                                      make_valid_doi, otindex_call,
@@ -38,7 +39,7 @@ def trees_in_synth(request):
 def include_tree_from_synth(request):
     data, study_id, tree_id, auth_info = collection_args_helper(request)
     # examine this study and tree, to confirm it exists *and* to capture its name
-    sds = request.registry.settings['phylesystem']
+    sds = get_phylesystem_doc_store(request)
     try:
         found_study = sds.return_doc(study_id, commit_sha=None, return_WIP_map=False)[0]
         match_list = extract_tree_nexson(found_study, tree_id=tree_id)
@@ -273,7 +274,7 @@ def get_document(request):
             duplicate_study_ids = []
             try:
                 study_doi = document_blob['nexml']['^ot:studyPublication']['@href']
-                oti_domain = request.registry.settings.get('oti_domain', 'https://api.opentreeoflife.org')
+                oti_domain = get_otindex_base_url(request)
                 duplicate_study_ids = find_studies_by_doi(oti_domain, study_doi)
                 try:
                     duplicate_study_ids.remove(doc_id)
@@ -527,31 +528,30 @@ def fetch_all_docs_and_last_commit(docstore):
 
 @view_config(route_name='fetch_all_amendments', renderer='json')
 def fetch_all_amendments(request):
-    return fetch_all_docs_and_last_commit(request.registry.settings['taxon_amendments'])
+    return fetch_all_docs_and_last_commit(get_taxon_amendments_doc_store(request))
 
 
 @view_config(route_name='fetch_all_collections', renderer='json')
 def fetch_all_collections(request):
-    return fetch_all_docs_and_last_commit(request.registry.settings['tree_collections'])
-
+    return fetch_all_docs_and_last_commit(get_tree_collections_doc_store(request))
 
 # TODO: deprecate the URLs below here
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='phylesystem_config', renderer='json')
 def phylesystem_config(request):
-    return request.registry.settings['phylesystem'].get_configuration_dict()
+    return get_phylesystem_doc_store(request).get_configuration_dict()
 
 
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='study_list', renderer='json')
 def study_list(request):
-    return request.registry.settings['phylesystem'].get_study_ids()
+    return get_phylesystem_doc_store(request).get_study_ids()
 
 
 # TODO: deprecate in favor of generic_external_url
 @view_config(route_name='study_external_url', renderer='json')
 def study_external_url(request):
-    phylesystem = request.registry.settings['phylesystem']
+    phylesystem = get_phylesystem_doc_store(request)
     study_id = request.matchdict['study_id']
     return external_url_generic_helper(phylesystem, study_id, 'study_id')
 
@@ -559,7 +559,7 @@ def study_external_url(request):
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='amendment_list', renderer='json')
 def list_all_amendments(request):
-    return request.registry.settings['taxon_amendments'].get_doc_ids()
+    return get_taxon_amendments_doc_store(request).get_doc_ids()
 
 
 @view_config(route_name='options_study_id', renderer='json', request_method='OPTIONS')
