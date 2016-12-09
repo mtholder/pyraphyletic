@@ -193,39 +193,58 @@ def extract_posted_data(request):
 
 def finish_write_operation(request, umbrella, document, put_args):
     auth_info = put_args['auth_info']
-    parent_sha = put_args.get('starting_commit_SHA')
     doc_id = put_args.get('doc_id')
-    resource_type = put_args['resource_type']
     commit_msg = put_args.get('commit_msg')
-    merged_sha = put_args.get('merged_SHA')
-    lmsg = '{} of {} with doc id = {} for starting_commit_SHA = {} and merged_SHA = {}'
-    _LOG.debug(lmsg.format(request.method, resource_type, doc_id, parent_sha, merged_sha))
-    bundle = umbrella.validate_and_convert_doc(document, put_args)
+    try:
+        if doc_id is None:
+            anco = commit_new_doc_helper(umbrella=umbrella,
+                                         document=document,
+                                         auth_info=auth_info,
+                                         commit_msg=commit_msg)
+        else:
+            anco = commit_existing_doc_helper(umbrella=umbrella,
+                                              doc_id=doc_id,
+                                              document=document,
+                                              optional_args=put_args,
+                                              auth_info=auth_info,
+                                              commit_msg=commit_msg)
+        annotated_commit = anco
+    except GitWorkflowError, err:
+        _LOG.exception('write operation failed in annotate_and_write')
+        raise httpexcept(HTTPBadRequest, err.msg)
+    if annotated_commit.get('error', 0) != 0:
+        raise httpexcept(HTTPBadRequest, json.dumps(annotated_commit))
+    mn = annotated_commit.get('merge_needed')
+    if (mn is not None) and (not mn):
+        trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
+    return annotated_commit
+
+
+def commit_new_doc_helper(umbrella, document, auth_info, commit_msg):
+    return umbrella.add_new_doc(json_repr=document,
+                                auth_info=auth_info,
+                                commit_msg=commit_msg)[1]
+
+
+def commit_existing_doc_helper(umbrella, doc_id, document, optional_args, auth_info, commit_msg):
+    parent_sha = optional_args.get('starting_commit_SHA')
+    resource_type = optional_args['resource_type']
+    merged_sha = optional_args.get('merged_SHA')
+    bundle = umbrella.validate_and_convert_doc(document, optional_args)
     processed_doc, errors, annotation, doc_adaptor = bundle
     if len(errors) > 0:
         msg = 'JSON {rt} payload failed validation with {nerrors} errors:\n{errors}'
         msg = msg.format(rt=resource_type, nerrors=len(errors), errors='\n  '.join(errors))
         _LOG.exception(msg)
         raise httpexcept(HTTPBadRequest, msg)
-    try:
-        annotated_commit = umbrella.annotate_and_write(document=processed_doc,
-                                                       doc_id=doc_id,
-                                                       auth_info=auth_info,
-                                                       adaptor=doc_adaptor,
-                                                       annotation=annotation,
-                                                       parent_sha=parent_sha,
-                                                       commit_msg=commit_msg,
-                                                       merged_sha=merged_sha)
-    except GitWorkflowError, err:
-        _LOG.exception('write operation failed in annotate_and_write')
-        raise httpexcept(HTTPBadRequest, err.msg)
-    if annotated_commit.get('error', 0) != 0:
-        raise httpexcept(HTTPBadRequest, json.dumps(annotated_commit))
-
-    mn = annotated_commit.get('merge_needed')
-    if (mn is not None) and (not mn):
-        trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
-    return annotated_commit
+    return umbrella.annotate_and_write(document=processed_doc,
+                                       doc_id=doc_id,
+                                       auth_info=auth_info,
+                                       adaptor=doc_adaptor,
+                                       annotation=annotation,
+                                       parent_sha=parent_sha,
+                                       commit_msg=commit_msg,
+                                       merged_sha=merged_sha)
 
 
 # TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.

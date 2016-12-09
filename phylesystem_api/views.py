@@ -330,7 +330,7 @@ def put_document(request):
 def post_study_document(request):
     request.matchdict['resource_type'] = 'study'
     document, post_args = extract_write_args(request, study_post=True, require_document=False)
-    if post_args.get('doc_id') is None:
+    if post_args.get('doc_id') is not None:
         raise httpexcept(HTTPBadRequest, 'POST operation does not expect a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
     import_method = post_args['import_method']

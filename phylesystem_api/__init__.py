@@ -127,13 +127,13 @@ def main(global_config, **settings):
                      request_method='DELETE')
     # POST methods don't need the doc id
     config.add_route('post_study',
-                     v_prefix + '/study/',
+                     v_prefix + '/study',
                      request_method='POST')
     config.add_route('post_taxon_amendment',
-                     v_prefix + '/amendment/',
+                     v_prefix + '/amendment',
                      request_method='POST')
     config.add_route('post_tree_collection',
-                     v_prefix + '/collection/',
+                     v_prefix + '/collection',
                      request_method='POST')
     # OPTIONS with and without ID
     config.add_route('options_study_id',
