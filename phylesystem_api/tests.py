@@ -49,12 +49,15 @@ def check_unmerged_response(test_case, ub):
     test_case.assertTrue('master' not in ub)
 
 def check_config_response(test_case, cfg):
-    print(cfg)
     test_case.assertSetEqual(set(cfg.keys()), {"initialization", "shards", "number_of_shards"})
 
 def check_external_url_response(test_case, doc_id, resp):
     test_case.assertEquals(resp.get('doc_id'), doc_id)
     test_case.assertTrue(resp.get('url', '').endswith('{}.json'.format(doc_id)))
+
+def check_push_failure_response(test_case, resp):
+    test_case.assertSetEqual(set(resp.keys()), {"doc_type", "errors", "pushes_succeeding"})
+    test_case.assertTrue(resp["pushes_succeeding"])
 
 
 render_test_input = 'hi from <a href="http://phylo.bio.ku.edu" target="new">' \
@@ -118,6 +121,14 @@ class ViewTests(unittest.TestCase):
         ra = generic_config(request)
         check_config_response(self, ra)
         self.assertNotEqual(ra, r)
+
+    def test_push_failure_state(self):
+        request = gen_versioned_dummy_request()
+        request.matchdict['resource_type'] = 'collection'
+        from phylesystem_api.views import push_failure
+        pf = push_failure(request)
+        check_push_failure_response(self, pf)
+
 
 if __name__ == '__main__':
     unittest.main()
