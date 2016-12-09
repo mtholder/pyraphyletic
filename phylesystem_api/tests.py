@@ -49,6 +49,7 @@ def check_unmerged_response(test_case, ub):
     test_case.assertTrue('master' not in ub)
 
 def check_config_response(test_case, cfg):
+    print(cfg)
     test_case.assertSetEqual(set(cfg.keys()), {"initialization", "shards", "number_of_shards"})
 
 render_test_input = 'hi from <a href="http://phylo.bio.ku.edu" target="new">' \
@@ -94,14 +95,17 @@ class ViewTests(unittest.TestCase):
 
     def test_config(self):
         request = gen_versioned_dummy_request()
-        from phylesystem_api.views import phylesystem_config
+        from phylesystem_api.views import phylesystem_config, generic_config
         r2 = phylesystem_config(request)
         check_config_response(self, r2)
         request.matchdict['resource_type'] = 'study'
-        from phylesystem_api.views import generic_config
         r = generic_config(request)
         check_config_response(self, r)
         self.assertDictEqual(r, r2)
+        request.matchdict['resource_type'] = 'amendment'
+        ra = generic_config(request)
+        check_config_response(self, ra)
+        self.assertNotEqual(ra, r)
 
 if __name__ == '__main__':
     unittest.main()
