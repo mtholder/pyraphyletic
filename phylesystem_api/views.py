@@ -34,96 +34,6 @@ _LOG = get_logger(__name__)
 
 
 ################################################################################
-# Methods relating to the set of trees queued for synthesis
-
-def synth_collection_helper(request):
-    """Returns tuple of four elements:
-        [0] tree_collection_doc_store,
-        [1] list of the synth collection IDs
-        [2] a list of each of the synth collection objects in the same order as coll_id_list
-        [3] a collection that is a concatenation of synth collections
-    """
-    coll_id_list = get_ids_of_synth_collections()
-    cds = get_tree_collections_doc_store(request)
-    _LOG.debug('ID of tree_collections = {}'.format(id(cds)))
-    coll_list = create_list_of_collections(cds, coll_id_list)
-    try:
-        concat = concatenate_collections(coll_list)
-    except:
-        msg = 'concatenation of collections failed'
-        _LOG.exception(msg)
-        return HTTPInternalServerError(body=msg)
-    return cds, coll_id_list, coll_list, concat
-
-
-@view_config(route_name='trees_in_synth', renderer='json')
-def trees_in_synth(request):
-    return synth_collection_helper(request)[3]
-
-
-@view_config(route_name='include_tree_in_synth', renderer='json', request_method="POST")
-def include_tree_in_synth(request):
-    data, study_id, tree_id, auth_info = collection_args_helper(request)
-    # examine this study and tree, to confirm it exists *and* to capture its name
-    sds = get_phylesystem_doc_store(request)
-    try:
-        found_study = sds.return_doc(study_id, commit_sha=None, return_WIP_map=False)[0]
-        match_list = extract_tree_nexson(found_study, tree_id=tree_id)
-        if len(match_list) != 1:
-            raise KeyError('tree id not found')
-        found_tree = match_list[0][1]
-        found_tree_name = found_tree.get('@label') or tree_id
-    except:  # report a missing/misidentified tree
-        msg = "Specified tree '{t}' in study '{s}' not found! Save this study and try again?"
-        _LOG.exception(msg)
-        raise httpexcept(HTTPNotFound, msg.format(s=study_id, t=tree_id))
-    cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
-    if cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
-        return current_synth_coll
-    commit_msg = "Added via API (include_tree_in_synth)"
-    comment = commit_msg + " from {p}"
-    comment = comment.format(p=found_study.get('nexml', {}).get('^ot:studyPublicationReference', ''))
-    decision = cds.create_tree_inclusion_decision(study_id=study_id,
-                                                  tree_id=tree_id,
-                                                  name=found_tree_name,
-                                                  comment=comment)
-    # find the default synth-input collection and parse its JSON
-    default_collection_id = coll_id_list[-1]
-    append_tree_to_collection_helper(request, cds, default_collection_id, decision, auth_info, commit_msg=commit_msg)
-    return trees_in_synth(request)
-
-
-@view_config(route_name='exclude_tree_from_synth', renderer='json', request_method="POST")
-def exclude_tree_from_synth(request):
-    data, study_id, tree_id, auth_info = collection_args_helper(request)
-    cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
-    if not cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
-        return current_synth_coll
-    needs_push = {}
-    for coll_id, coll in itertools.izip(coll_id_list, coll_list):
-        if cds.collection_includes_tree(coll, study_id, tree_id):
-            try:
-                r = cds.purge_tree_from_collection(coll_id,
-                                                   study_id=study_id,
-                                                   tree_id=tree_id,
-                                                   auth_info=auth_info,
-                                                   commit_msg="Updated via API (exclude_tree_from_synth)")
-                commit_return = r
-            except GitWorkflowError, err:
-                raise httpexcept(HTTPInternalServerError, err.msg)
-            except:
-                raise httpexcept(HTTPBadRequest, traceback.format_exc())
-            # We only need to push once per affected shard even if multiple collections in the shard change...
-            mn = commit_return.get('merge_needed')
-            if (mn is not None) and (not mn):
-                shard = cds.get_shard(coll_id)
-                needs_push[id(shard)] = coll_id
-    for coll_id in needs_push.values():
-        trigger_push(request, cds, coll_id, 'EDIT', auth_info=auth_info)
-    return trees_in_synth(request)
-
-
-################################################################################
 # general reporting
 
 # noinspection PyUnusedLocal
@@ -650,6 +560,96 @@ def nudge_taxon_index(request):
     if msg == '':
         return full_msg
     raise httpexcept(HTTPInternalServerError, full_msg)
+
+
+################################################################################
+# Methods relating to the set of trees queued for synthesis
+
+def synth_collection_helper(request):
+    """Returns tuple of four elements:
+        [0] tree_collection_doc_store,
+        [1] list of the synth collection IDs
+        [2] a list of each of the synth collection objects in the same order as coll_id_list
+        [3] a collection that is a concatenation of synth collections
+    """
+    coll_id_list = get_ids_of_synth_collections()
+    cds = get_tree_collections_doc_store(request)
+    _LOG.debug('ID of tree_collections = {}'.format(id(cds)))
+    coll_list = create_list_of_collections(cds, coll_id_list)
+    try:
+        concat = concatenate_collections(coll_list)
+    except:
+        msg = 'concatenation of collections failed'
+        _LOG.exception(msg)
+        return HTTPInternalServerError(body=msg)
+    return cds, coll_id_list, coll_list, concat
+
+
+@view_config(route_name='trees_in_synth', renderer='json')
+def trees_in_synth(request):
+    return synth_collection_helper(request)[3]
+
+
+@view_config(route_name='include_tree_in_synth', renderer='json', request_method="POST")
+def include_tree_in_synth(request):
+    data, study_id, tree_id, auth_info = collection_args_helper(request)
+    # examine this study and tree, to confirm it exists *and* to capture its name
+    sds = get_phylesystem_doc_store(request)
+    try:
+        found_study = sds.return_doc(study_id, commit_sha=None, return_WIP_map=False)[0]
+        match_list = extract_tree_nexson(found_study, tree_id=tree_id)
+        if len(match_list) != 1:
+            raise KeyError('tree id not found')
+        found_tree = match_list[0][1]
+        found_tree_name = found_tree.get('@label') or tree_id
+    except:  # report a missing/misidentified tree
+        msg = "Specified tree '{t}' in study '{s}' not found! Save this study and try again?"
+        _LOG.exception(msg)
+        raise httpexcept(HTTPNotFound, msg.format(s=study_id, t=tree_id))
+    cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
+    if cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
+        return current_synth_coll
+    commit_msg = "Added via API (include_tree_in_synth)"
+    comment = commit_msg + " from {p}"
+    comment = comment.format(p=found_study.get('nexml', {}).get('^ot:studyPublicationReference', ''))
+    decision = cds.create_tree_inclusion_decision(study_id=study_id,
+                                                  tree_id=tree_id,
+                                                  name=found_tree_name,
+                                                  comment=comment)
+    # find the default synth-input collection and parse its JSON
+    default_collection_id = coll_id_list[-1]
+    append_tree_to_collection_helper(request, cds, default_collection_id, decision, auth_info, commit_msg=commit_msg)
+    return trees_in_synth(request)
+
+
+@view_config(route_name='exclude_tree_from_synth', renderer='json', request_method="POST")
+def exclude_tree_from_synth(request):
+    data, study_id, tree_id, auth_info = collection_args_helper(request)
+    cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
+    if not cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
+        return current_synth_coll
+    needs_push = {}
+    for coll_id, coll in itertools.izip(coll_id_list, coll_list):
+        if cds.collection_includes_tree(coll, study_id, tree_id):
+            try:
+                r = cds.purge_tree_from_collection(coll_id,
+                                                   study_id=study_id,
+                                                   tree_id=tree_id,
+                                                   auth_info=auth_info,
+                                                   commit_msg="Updated via API (exclude_tree_from_synth)")
+                commit_return = r
+            except GitWorkflowError, err:
+                raise httpexcept(HTTPInternalServerError, err.msg)
+            except:
+                raise httpexcept(HTTPBadRequest, traceback.format_exc())
+            # We only need to push once per affected shard even if multiple collections in the shard change...
+            mn = commit_return.get('merge_needed')
+            if (mn is not None) and (not mn):
+                shard = cds.get_shard(coll_id)
+                needs_push[id(shard)] = coll_id
+    for coll_id in needs_push.values():
+        trigger_push(request, cds, coll_id, 'EDIT', auth_info=auth_info)
+    return trees_in_synth(request)
 
 
 ################################################################################

@@ -48,6 +48,8 @@ def check_study_list_and_config_response(test_case,
 def check_unmerged_response(test_case, ub):
     test_case.assertTrue('master' not in ub)
 
+def check_config_response(test_case, cfg):
+    test_case.assertSetEqual(set(cfg.keys()), {"initialization", "shards", "number_of_shards"})
 
 render_test_input = 'hi from <a href="http://phylo.bio.ku.edu" target="new">' \
                     'http://phylo.bio.ku.edu</a> and  ' \
@@ -89,6 +91,17 @@ class ViewTests(unittest.TestCase):
         request.matchdict['resource_type'] = 'study'
         from phylesystem_api.views import unmerged_branches
         check_unmerged_response(self, unmerged_branches(request))
+
+    def test_config(self):
+        request = gen_versioned_dummy_request()
+        from phylesystem_api.views import phylesystem_config
+        r2 = phylesystem_config(request)
+        check_config_response(self, r2)
+        request.matchdict['resource_type'] = 'study'
+        from phylesystem_api.views import generic_config
+        r = generic_config(request)
+        check_config_response(self, r)
+        self.assertDictEqual(r, r2)
 
 if __name__ == '__main__':
     unittest.main()
