@@ -7,7 +7,7 @@ from threading import Lock, Thread
 
 import requests
 from github import Github, BadCredentialsException
-from peyotl import (concatenate_collections, create_doc_store_wrapper,
+from peyotl import (create_doc_store_wrapper,
                     get_logger, GitWorkflowError,
                     NexsonDocSchema,
                     OTI,
@@ -187,6 +187,64 @@ def extract_posted_data(request):
     if request.text:
         return json.loads(request.text)
     raise httpexcept(HTTPBadRequest, "no POSTed data")
+
+
+def finish_write_operation(request, umbrella, document, put_args):
+    auth_info = put_args['auth_info']
+    parent_sha = put_args.get('starting_commit_SHA')
+    doc_id = put_args.get('doc_id')
+    resource_type = put_args['resource_type']
+    commit_msg = put_args.get('commit_msg')
+    merged_sha = put_args.get('merged_SHA')
+    lmsg = '{} of {} with doc id = {} for starting_commit_SHA = {} and merged_SHA = {}'
+    _LOG.debug(lmsg.format(request.method, resource_type, doc_id, parent_sha, merged_sha))
+    bundle = umbrella.validate_and_convert_doc(document, put_args)
+    processed_doc, errors, annotation, doc_adaptor = bundle
+    if len(errors) > 0:
+        msg = 'JSON {rt} payload failed validation with {nerrors} errors:\n{errors}'
+        msg = msg.format(rt=resource_type, nerrors=len(errors), errors='\n  '.join(errors))
+        _LOG.exception(msg)
+        raise httpexcept(HTTPBadRequest, msg)
+    try:
+        annotated_commit = umbrella.annotate_and_write(document=processed_doc,
+                                                       doc_id=doc_id,
+                                                       auth_info=auth_info,
+                                                       adaptor=doc_adaptor,
+                                                       annotation=annotation,
+                                                       parent_sha=parent_sha,
+                                                       commit_msg=commit_msg,
+                                                       merged_sha=merged_sha)
+    except GitWorkflowError, err:
+        _LOG.exception('write operation failed in annotate_and_write')
+        raise httpexcept(HTTPBadRequest, err.msg)
+    if annotated_commit.get('error', 0) != 0:
+        raise httpexcept(HTTPBadRequest, json.dumps(annotated_commit))
+
+    mn = annotated_commit.get('merge_needed')
+    if (mn is not None) and (not mn):
+        trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
+    return annotated_commit
+
+
+# TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
+def fetch_all_docs_and_last_commit(docstore):
+    doc_list = []
+    for doc_id, props in docstore.iter_doc_objs():
+        _LOG.debug('doc_id = {}'.format(doc_id))
+        # reckon and add 'lastModified' property, based on commit history?
+        latest_commit = docstore.get_version_history_for_doc_id(doc_id)[0]
+        props.update({
+            'id': doc_id,
+            'lastModified': {
+                'author_name': latest_commit.get('author_name'),
+                'relative_date': latest_commit.get('relative_date'),
+                'display_date': latest_commit.get('date'),
+                'ISO_date': latest_commit.get('date_ISO_8601'),
+                'sha': latest_commit.get('id')  # this is the commit hash
+            }
+        })
+        doc_list.append(props)
+    return doc_list
 
 
 ######################################################################################
@@ -662,3 +720,21 @@ def format_gh_webhook_response(url, msg):
     full_msg = """This URL should be called by a webhook set in the docstore repo:
         <br /><br /><a href="{g}">{g}</a><br /><pre>{m}</pre>"""
     return full_msg.format(g=url, m=msg)
+
+# The portion of this file that deals with the jobq and thread-safe
+# execution of delayed tasks is based on the scheduler.py file, which is part of SATe
+
+# SATe is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Jiaye Yu and Mark Holder, University of Kansas

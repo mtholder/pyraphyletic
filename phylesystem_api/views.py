@@ -5,7 +5,7 @@ import json
 import traceback
 import bleach
 import markdown
-from peyotl import (add_cc0_waiver,
+from peyotl import (add_cc0_waiver, concatenate_collections,
                     extract_tree_nexson,
                     get_logger, GitWorkflowError,
                     import_nexson_from_crossref_metadata, import_nexson_from_treebase, )
@@ -13,11 +13,12 @@ from pyramid.httpexceptions import (HTTPNotFound, HTTPBadRequest, HTTPInternalSe
 from pyramid.response import Response
 from pyramid.view import view_config
 from phylesystem_api.utility import (append_tree_to_collection_helper,
-                                     collection_args_helper, concatenate_collections,
+                                     collection_args_helper,
                                      copy_of_push_failures, create_list_of_collections,
                                      do_http_post_json,
                                      err_body, extract_write_args, extract_posted_data,
-                                     find_studies_by_doi, format_gh_webhook_response,
+                                     fetch_all_docs_and_last_commit, find_studies_by_doi,
+                                     finish_write_operation, format_gh_webhook_response,
                                      get_ids_of_synth_collections,
                                      get_otindex_base_url, get_taxonomy_api_base_url,
                                      get_phylesystem_doc_store, get_taxon_amendments_doc_store,
@@ -30,6 +31,7 @@ from phylesystem_api.utility import (append_tree_to_collection_helper,
                                      umbrella_from_request, umbrella_with_id_from_request)
 
 _LOG = get_logger(__name__)
+
 
 ################################################################################
 # Methods relating to the set of trees queued for synthesis
@@ -120,8 +122,9 @@ def exclude_tree_from_synth(request):
         trigger_push(request, cds, coll_id, 'EDIT', auth_info=auth_info)
     return trees_in_synth(request)
 
+
 ################################################################################
-# general reposrting
+# general reporting
 
 # noinspection PyUnusedLocal
 @view_config(route_name='versioned_home', renderer='json')
@@ -134,23 +137,67 @@ def index(request):
     }
 
 
-@view_config(route_name='render_markdown', request_method='POST')
-def render_markdown(request):
-    data = extract_posted_data(request)
-    try:
-        src = data['src']
-    except KeyError:
-        raise httpexcept(HTTPBadRequest, '"src" parameter not found in POST')
+@view_config(route_name='generic_config', renderer='json')
+def generic_config(request):
+    return umbrella_from_request(request).get_configuration_dict()
 
-    # noinspection PyUnusedLocal
-    def add_blank_target(attrs, new=False):
-        attrs['target'] = '_blank'
-        return attrs
 
-    h = markdown.markdown(src)
-    h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'em', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
-    h = bleach.linkify(h, callbacks=[add_blank_target])
-    return Response(h)
+# TODO: deprecate the URLs below here
+# TODO: deprecate in favor of generic_list
+@view_config(route_name='phylesystem_config', renderer='json')
+def phylesystem_config(request):
+    return get_phylesystem_doc_store(request).get_configuration_dict()
+
+
+@view_config(route_name='unmerged_branches', renderer='json')
+def unmerged_branches(request):
+    """Returns the non-master branches for a resource_type.
+    Default is request.matchdict['resource_type'] is 'phylesystem'.
+    """
+    umbrella = umbrella_from_request(request)
+    bs = set(umbrella.get_branch_list())
+    bl = [i for i in bs if i != 'master']
+    bl.sort()
+    return bl
+
+
+################################################################################
+# Methods pertaining to pushing the info (via a mirror) to GitHub
+
+
+@view_config(route_name='push_study_via_id', renderer='json', request_method='PUT')
+def push_study_document(request):
+    request.matchdict['resource_type'] = 'study'
+    return push_document(request)
+
+
+@view_config(route_name='push_taxon_amendment_via_id', renderer='json', request_method='PUT')
+def push_amendment_document(request):
+    request.matchdict['resource_type'] = 'taxon_amendments'
+    return push_document(request)
+
+
+@view_config(route_name='push_tree_collection_via_id', renderer='json', request_method='PUT')
+def push_collection_document(request):
+    request.matchdict['resource_type'] = 'tree_collections'
+    u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
+    request.matchdict['doc_id'] = '/'.join(u_c)
+    return push_document(request)
+
+
+@view_config(route_name='generic_push', renderer='json')
+def generic_push(request, doc_id=None):
+    umbrella = umbrella_from_request(request)
+    gpj = GitPushJob(request=request,
+                     umbrella=umbrella,
+                     doc_id=doc_id,
+                     operation='USER-TRIGGERED PUSH')
+    gpj.push_to_github()
+    return gpj.get_response_obj()
+
+
+def push_document(request):
+    return generic_push(request, doc_id=request.matchdict['doc_id'])
 
 
 @view_config(route_name='generic_push_failure', renderer='json')
@@ -165,26 +212,23 @@ def push_failure(request):
             'errors': pf, }
 
 
+################################################################################
+# listing IDs for a doc type
+
+
 @view_config(route_name='generic_list', renderer='json')
 def generic_list(request):
     return umbrella_from_request(request).get_doc_ids()
 
 
-@view_config(route_name='generic_config', renderer='json')
-def generic_config(request):
-    return umbrella_from_request(request).get_configuration_dict()
+# TODO: deprecate in favor of generic_list
+@view_config(route_name='study_list', renderer='json')
+def study_list(request):
+    return get_phylesystem_doc_store(request).get_study_ids()
 
 
-@view_config(route_name='unmerged_branches', renderer='json')
-def unmerged_branches(request):
-    """Returns the non-master branches for a resource_type.
-    Default is request.matchdict['resource_type'] is 'phylesystem'.
-    """
-    umbrella = umbrella_from_request(request)
-    bs = set(umbrella.get_branch_list())
-    bl = [i for i in bs if i != 'master']
-    bl.sort()
-    return bl
+################################################################################
+# returning URLs for the GitHub version of a resource
 
 
 def external_url_generic_helper(umbrella, doc_id, doc_id_key):
@@ -201,6 +245,18 @@ def external_url_generic_helper(umbrella, doc_id, doc_id_key):
 def external_url(request):
     umbrella, doc_id = umbrella_with_id_from_request(request)
     return external_url_generic_helper(umbrella, doc_id, 'doc_id')
+
+
+# TODO: deprecate in favor of generic_external_url
+@view_config(route_name='study_external_url', renderer='json')
+def study_external_url(request):
+    phylesystem = get_phylesystem_doc_store(request)
+    study_id = request.matchdict['study_id']
+    return external_url_generic_helper(phylesystem, study_id, 'study_id')
+
+
+################################################################################
+# GET for a doc
 
 
 @view_config(route_name='get_study_subresource_no_id', renderer='json', request_method='GET')
@@ -302,7 +358,7 @@ def get_document(request):
             try:
                 study_doi = document_blob['nexml']['^ot:studyPublication']['@href']
             except:
-                pass # no DOI
+                pass  # no DOI
             else:
                 try:
                     oti_domain = get_otindex_base_url(request)
@@ -320,6 +376,9 @@ def get_document(request):
     request.override_renderer = 'string'
     return Response(body=result_data, content_type='text/plain')
 
+
+################################################################################
+# PUT - replace the doc with the a payload of a PUT
 
 @view_config(route_name='put_study_via_id', renderer='json', request_method='PUT')
 def put_study_document(request):
@@ -341,40 +400,21 @@ def put_collection_document(request):
     return put_document(request)
 
 
-@view_config(route_name='push_study_via_id', renderer='json', request_method='PUT')
-def push_study_document(request):
-    request.matchdict['resource_type'] = 'study'
-    return push_document(request)
-
-
-@view_config(route_name='push_taxon_amendment_via_id', renderer='json', request_method='PUT')
-def push_amendment_document(request):
-    request.matchdict['resource_type'] = 'taxon_amendments'
-    return push_document(request)
-
-
-@view_config(route_name='push_tree_collection_via_id', renderer='json', request_method='PUT')
-def push_collection_document(request):
-    request.matchdict['resource_type'] = 'tree_collections'
-    u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
-    request.matchdict['doc_id'] = '/'.join(u_c)
-    return push_document(request)
-
-
-@view_config(route_name='generic_push', renderer='json')
-def generic_push(request, doc_id=None):
+def put_document(request):
+    """Open Tree API methods relating to updating existing resources"""
+    document, put_args = extract_write_args(request)
+    if put_args.get('starting_commit_SHA') is None:
+        raise httpexcept(HTTPBadRequest,
+                         'PUT operation expects a "starting_commit_SHA" argument with the SHA of the parent')
+    if put_args.get('doc_id') is None:
+        raise httpexcept(HTTPBadRequest, 'PUT operation expects a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
-    gpj = GitPushJob(request=request,
-                     umbrella=umbrella,
-                     doc_id=doc_id,
-                     operation='USER-TRIGGERED PUSH')
-    gpj.push_to_github()
-    return gpj.get_response_obj()
+    return finish_write_operation(request, umbrella, document, put_args)
 
 
-def push_document(request):
-    return generic_push(request, doc_id=request.matchdict['doc_id'])
-
+################################################################################
+# Create a new doc by POSTing new data or information about how to create a
+#   minimal doc.
 
 @view_config(route_name='post_study', renderer='json', request_method='POST')
 def post_study_document(request):
@@ -447,54 +487,8 @@ def post_document(request):
     return finish_write_operation(request, umbrella, document, post_args)
 
 
-def put_document(request):
-    """Open Tree API methods relating to updating existing resources"""
-    document, put_args = extract_write_args(request)
-    if put_args.get('starting_commit_SHA') is None:
-        raise httpexcept(HTTPBadRequest,
-                         'PUT operation expects a "starting_commit_SHA" argument with the SHA of the parent')
-    if put_args.get('doc_id') is None:
-        raise httpexcept(HTTPBadRequest, 'PUT operation expects a URL that ends with a document ID')
-    umbrella = umbrella_from_request(request)
-    return finish_write_operation(request, umbrella, document, put_args)
-
-
-def finish_write_operation(request, umbrella, document, put_args):
-    auth_info = put_args['auth_info']
-    parent_sha = put_args.get('starting_commit_SHA')
-    doc_id = put_args.get('doc_id')
-    resource_type = put_args['resource_type']
-    commit_msg = put_args.get('commit_msg')
-    merged_sha = put_args.get('merged_SHA')
-    lmsg = '{} of {} with doc id = {} for starting_commit_SHA = {} and merged_SHA = {}'
-    _LOG.debug(lmsg.format(request.method, resource_type, doc_id, parent_sha, merged_sha))
-    bundle = umbrella.validate_and_convert_doc(document, put_args)
-    processed_doc, errors, annotation, doc_adaptor = bundle
-    if len(errors) > 0:
-        msg = 'JSON {rt} payload failed validation with {nerrors} errors:\n{errors}'
-        msg = msg.format(rt=resource_type, nerrors=len(errors), errors='\n  '.join(errors))
-        _LOG.exception(msg)
-        raise httpexcept(HTTPBadRequest, msg)
-    try:
-        annotated_commit = umbrella.annotate_and_write(document=processed_doc,
-                                                       doc_id=doc_id,
-                                                       auth_info=auth_info,
-                                                       adaptor=doc_adaptor,
-                                                       annotation=annotation,
-                                                       parent_sha=parent_sha,
-                                                       commit_msg=commit_msg,
-                                                       merged_sha=merged_sha)
-    except GitWorkflowError, err:
-        _LOG.exception('write operation failed in annotate_and_write')
-        raise httpexcept(HTTPBadRequest, err.msg)
-    if annotated_commit.get('error', 0) != 0:
-        raise httpexcept(HTTPBadRequest, json.dumps(annotated_commit))
-
-    mn = annotated_commit.get('merge_needed')
-    if (mn is not None) and (not mn):
-        trigger_push(request, umbrella, doc_id, 'EDIT', auth_info)
-    return annotated_commit
-
+################################################################################
+# DELETE for docs
 
 @view_config(route_name='delete_study_via_id', renderer='json', request_method='DELETE')
 def delete_study_document(request):
@@ -537,27 +531,6 @@ def delete_document(request):
         return x
 
 
-# TODO: the following helper (and its 2 views) need to be cached, if we are going to continue to support them.
-def fetch_all_docs_and_last_commit(docstore):
-    doc_list = []
-    for doc_id, props in docstore.iter_doc_objs():
-        _LOG.debug('doc_id = {}'.format(doc_id))
-        # reckon and add 'lastModified' property, based on commit history?
-        latest_commit = docstore.get_version_history_for_doc_id(doc_id)[0]
-        props.update({
-            'id': doc_id,
-            'lastModified': {
-                'author_name': latest_commit.get('author_name'),
-                'relative_date': latest_commit.get('relative_date'),
-                'display_date': latest_commit.get('date'),
-                'ISO_date': latest_commit.get('date_ISO_8601'),
-                'sha': latest_commit.get('id')  # this is the commit hash
-            }
-        })
-        doc_list.append(props)
-    return doc_list
-
-
 @view_config(route_name='fetch_all_amendments', renderer='json')
 def fetch_all_amendments(request):
     return fetch_all_docs_and_last_commit(get_taxon_amendments_doc_store(request))
@@ -566,26 +539,6 @@ def fetch_all_amendments(request):
 @view_config(route_name='fetch_all_collections', renderer='json')
 def fetch_all_collections(request):
     return fetch_all_docs_and_last_commit(get_tree_collections_doc_store(request))
-
-# TODO: deprecate the URLs below here
-# TODO: deprecate in favor of generic_list
-@view_config(route_name='phylesystem_config', renderer='json')
-def phylesystem_config(request):
-    return get_phylesystem_doc_store(request).get_configuration_dict()
-
-
-# TODO: deprecate in favor of generic_list
-@view_config(route_name='study_list', renderer='json')
-def study_list(request):
-    return get_phylesystem_doc_store(request).get_study_ids()
-
-
-# TODO: deprecate in favor of generic_external_url
-@view_config(route_name='study_external_url', renderer='json')
-def study_external_url(request):
-    phylesystem = get_phylesystem_doc_store(request)
-    study_id = request.matchdict['study_id']
-    return external_url_generic_helper(phylesystem, study_id, 'study_id')
 
 
 # TODO: deprecate in favor of generic_list
@@ -607,6 +560,9 @@ def study_options(request):
         response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
     return response
 
+
+################################################################################
+# Methods that get the POSTs from GitHub
 
 @view_config(route_name='nudge_study_index', renderer='json', request_method='POST')
 def nudge_study_index(request):
@@ -695,20 +651,24 @@ def nudge_taxon_index(request):
         return full_msg
     raise httpexcept(HTTPInternalServerError, full_msg)
 
-# The portion of this file that deals with the jobq and thread-safe
-# execution of delayed tasks is based on the scheduler.py file, which is part of SATe
 
-# SATe is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+################################################################################
+# utility
 
-# Jiaye Yu and Mark Holder, University of Kansas
+@view_config(route_name='render_markdown', request_method='POST')
+def render_markdown(request):
+    data = extract_posted_data(request)
+    try:
+        src = data['src']
+    except KeyError:
+        raise httpexcept(HTTPBadRequest, '"src" parameter not found in POST')
+
+    # noinspection PyUnusedLocal
+    def add_blank_target(attrs, new=False):
+        attrs['target'] = '_blank'
+        return attrs
+
+    h = markdown.markdown(src)
+    h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'em', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
+    h = bleach.linkify(h, callbacks=[add_blank_target])
+    return Response(h)
