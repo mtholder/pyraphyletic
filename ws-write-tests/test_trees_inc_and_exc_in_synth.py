@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-import sys, os
-from opentreetesting import test_http_json_method, writable_api_host_and_oauth_or_exit
+import sys
+from opentreetesting import test_http_json_method, writable_api_host_and_oauth_or_exit, warn
 from peyotl import tree_iter_nexson_proxy
 DOMAIN, auth_token = writable_api_host_and_oauth_or_exit(__file__)
 
@@ -66,19 +66,14 @@ print(study_id, tree_id)
 
 # See if we can add the tree
 SUBMIT_URI = DOMAIN + '/v4/include_tree_in_synth'
-data = {'auth_token': auth_token,
-        'study_id': study_id,
-        'tree_id': tree_id,
-        }
+change_synth_data = {'auth_token': auth_token, 'study_id': study_id, 'tree_id': tree_id, }
 r = test_http_json_method(SUBMIT_URI,
                           'POST',
-                          data=data,
+                          data=change_synth_data,
                           expected_status=200,
                           return_bool_data=True)
 if not r[0]:
     sys.exit(1)
-
-print(r[1])
 
 # BELOW THIS POINT, we have to remove the tree before exiting (or at least warn if we fail to do that)
 
@@ -89,20 +84,32 @@ if study_id not in new_study_to_tree_list:
     rc = 1
 elif tree_id not in new_study_to_tree_list[study_id]:
     rc = 1
+if rc == 1:
+    warn("tree added, but not not showing up in trees_in_synth response.")
 
 # Remove our addition to return the testing corpus to its previous state.
 try:
     SUBMIT_URI = DOMAIN + '/v4/exclude_tree_in_synth'
-    data = {'study_id': study_id, 'tree_id': tree_id}
     r = test_http_json_method(SUBMIT_URI,
                               'POST',
-                              data=data,
+                              data=change_synth_data,
                               expected_status=200,
                               return_bool_data=True)
     assert r[0]
-    print(r[1])
 except:
     msg = "ERROR: study_id, tree_id pair ({}, {}) was added to the default synth collection, but removal failed!"
+    msg = msg.format(study_id, tree_id)
     sys.stderr.write(msg)
     sys.exit(1)
+
+restored_study_to_tree_list = fetch_current_synth_study2tree_mapping()
+
+if tree_id in restored_study_to_tree_list.get(study_id, []):
+    warn("Tree excluded from synth, but still showing up in trees_in_synth response")
+    rc = 1
+elif restored_study_to_tree_list != orig_study_to_tree_list:
+    from peyotl.struct_diff import  DictDiff
+    dd = DictDiff.create(orig_study_to_tree_list, restored_study_to_tree_list)
+    msg = "Trees showing up in trees_in_synth response changed after restore:\n{}".format(dd.__dict__)
+    warn(msg)
 sys.exit(rc)

@@ -166,7 +166,7 @@ def main(global_config, **settings):
                      v_prefix + '/include_tree_in_synth',
                      request_method="POST")
     config.add_route('exclude_tree_from_synth',
-                     v_prefix + '/include_tree_in_synth',
+                     v_prefix + '/exclude_tree_in_synth',
                      request_method="POST")
 
     # TODO add routes to be deprecated once our tools rely only on the generic forms

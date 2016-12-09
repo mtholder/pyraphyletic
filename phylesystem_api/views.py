@@ -31,6 +31,8 @@ from phylesystem_api.utility import (append_tree_to_collection_helper,
 
 _LOG = get_logger(__name__)
 
+################################################################################
+# Methods relating to the set of trees queued for synthesis
 
 def synth_collection_helper(request):
     """Returns tuple of four elements:
@@ -57,7 +59,7 @@ def trees_in_synth(request):
     return synth_collection_helper(request)[3]
 
 
-@view_config(route_name='include_tree_in_synth', renderer='json')
+@view_config(route_name='include_tree_in_synth', renderer='json', request_method="POST")
 def include_tree_in_synth(request):
     data, study_id, tree_id, auth_info = collection_args_helper(request)
     # examine this study and tree, to confirm it exists *and* to capture its name
@@ -68,9 +70,10 @@ def include_tree_in_synth(request):
         if len(match_list) != 1:
             raise KeyError('tree id not found')
         found_tree = match_list[0][1]
-        found_tree_name = found_tree['@label'] or tree_id
+        found_tree_name = found_tree.get('@label') or tree_id
     except:  # report a missing/misidentified tree
         msg = "Specified tree '{t}' in study '{s}' not found! Save this study and try again?"
+        _LOG.exception(msg)
         raise httpexcept(HTTPNotFound, msg.format(s=study_id, t=tree_id))
     cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
     if cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
@@ -88,11 +91,11 @@ def include_tree_in_synth(request):
     return trees_in_synth(request)
 
 
-@view_config(route_name='exclude_tree_from_synth', renderer='json')
+@view_config(route_name='exclude_tree_from_synth', renderer='json', request_method="POST")
 def exclude_tree_from_synth(request):
     data, study_id, tree_id, auth_info = collection_args_helper(request)
     cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
-    if not current_synth_coll.includes_tree(study_id, tree_id):
+    if not cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
         return current_synth_coll
     needs_push = {}
     for coll_id, coll in itertools.izip(coll_id_list, coll_list):
@@ -117,6 +120,8 @@ def exclude_tree_from_synth(request):
         trigger_push(request, cds, coll_id, 'EDIT', auth_info=auth_info)
     return trees_in_synth(request)
 
+################################################################################
+# general reposrting
 
 # noinspection PyUnusedLocal
 @view_config(route_name='versioned_home', renderer='json')
