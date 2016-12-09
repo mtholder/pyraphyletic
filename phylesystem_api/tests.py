@@ -52,6 +52,11 @@ def check_config_response(test_case, cfg):
     print(cfg)
     test_case.assertSetEqual(set(cfg.keys()), {"initialization", "shards", "number_of_shards"})
 
+def check_external_url_response(test_case, doc_id, resp):
+    test_case.assertEquals(resp.get('doc_id'), doc_id)
+    test_case.assertTrue(resp.get('url', '').endswith('{}.json'.format(doc_id)))
+
+
 render_test_input = 'hi from <a href="http://phylo.bio.ku.edu" target="new">' \
                     'http://phylo.bio.ku.edu</a> and  ' \
                     'https://github.com/orgs/OpenTreeOfLife/dashboard'
@@ -86,6 +91,13 @@ class ViewTests(unittest.TestCase):
         from phylesystem_api.views import generic_config
         y = generic_config(request)
         check_study_list_and_config_response(self, sl, x, y)
+        if not sl:
+            return
+        from phylesystem_api.views import external_url
+        doc_id = sl[0]
+        request.matchdict['doc_id'] = doc_id
+        e = external_url(request)
+        check_external_url_response(self, doc_id, e)
 
     def test_unmerged(self):
         request = gen_versioned_dummy_request()

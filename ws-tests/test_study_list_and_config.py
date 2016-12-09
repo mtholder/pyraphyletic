@@ -2,7 +2,8 @@
 import unittest
 
 from opentreetesting import test_http_json_method, config
-from phylesystem_api.tests import check_study_list_and_config_response
+from phylesystem_api.tests import (check_study_list_and_config_response,
+                                   check_external_url_response)
 
 DOMAIN = config('host', 'apihost')
 
@@ -22,6 +23,14 @@ class TestStudyListAndConfig(unittest.TestCase):
         self.assertTrue(r[0])
         gen_config = r[1]
         check_study_list_and_config_response(self, sl, full_config, gen_config)
+        if not sl:
+            return
+        doc_id = sl[0]
+        EXT_SUBMIT_URI = DOMAIN + '/v4/study/external_url/{}'.format(doc_id)
+        r = test_http_json_method(EXT_SUBMIT_URI, 'GET', expected_status=200, return_bool_data=True)
+        self.assertTrue(r[0])
+        e = r[1]
+        check_external_url_response(self, doc_id, e)
 
 
 if __name__ == '__main__':
