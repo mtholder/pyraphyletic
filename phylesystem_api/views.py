@@ -423,8 +423,6 @@ def delete_collection_document(request):
 def delete_document(request):
     args = extract_write_args(request, require_document=False)[1]
     parent_sha = args['starting_commit_SHA']
-    if parent_sha is None:
-        raise httpexcept(HTTPBadRequest, 'Expecting a "starting_commit_SHA" argument with the SHA of the parent')
     commit_msg = args['commit_msg']
     auth_info = args['auth_info']
     doc_id = args['doc_id']
@@ -432,9 +430,10 @@ def delete_document(request):
     try:
         x = umbrella.delete_document(doc_id, auth_info, parent_sha, commit_msg=commit_msg)
     except GitWorkflowError, err:
+        _LOG.exception("delete exception")
         raise httpexcept(HTTPInternalServerError, err.msg)
     except:
-        _LOG.exception('Exception getting document {} in DELETE'.format(doc_id))
+        _LOG.exception('Exception deleting document {} in DELETE'.format(doc_id))
     else:
         if x.get('error') == 0:
             trigger_push(request, umbrella=umbrella, doc_id=doc_id, operation="DELETE", auth_info=auth_info)
