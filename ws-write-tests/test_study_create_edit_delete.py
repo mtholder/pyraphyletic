@@ -2,7 +2,7 @@
 
 import datetime
 import sys
-from opentreetesting import test_http_json_method, writable_api_host_and_oauth_or_exit
+from opentreetesting import test_http_json_method, writable_api_host_and_oauth_or_exit, debug
 
 DOMAIN, auth_token = writable_api_host_and_oauth_or_exit(__file__)
 BASE_STUDY_URI = DOMAIN + '/v4/study'
@@ -49,6 +49,7 @@ if not test_http_json_method(BASE_STUDY_URI,
                              expected_status=404):
     sys.exit(1)
 to_del = []
+rc = 1
 try:
     orig_study_list = get_study_list()
     post_resp = test_http_json_method(BASE_STUDY_URI,
@@ -61,6 +62,8 @@ try:
     create_resp = post_resp[1]
     posted_id = create_resp['resource_id']
     to_del.append(posted_id)
+    debug('post created {}'.format(posted_id))
+
     assert posted_id not in orig_study_list
     # Put of empty data should result in 400
     resp = test_http_json_method(BASE_STUDY_URI + '/' + posted_id,
@@ -71,7 +74,8 @@ try:
 
     # test mod
     test_mod_of_existing(posted_id)
-except AssertionError:
+    rc = 0
+finally:
     for to_del_id in to_del:
         try:
             A_STUDY_URI = BASE_STUDY_URI + '/' + to_del_id
@@ -84,6 +88,8 @@ except AssertionError:
                 sys.stderr.write('Deletion of {} succeeded: {}\n'.format(to_del_id, del_resp[1]))
             else:
                 sys.stderr.write('Deletion of {} failed\n'.format(to_del_id))
+                rc = 1
         except:
             sys.stderr.write("failed to delete {}\n".format(to_del_id))
-            sys.exit(1)
+            rc = 1
+sys.exit(rc)
