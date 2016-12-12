@@ -40,6 +40,10 @@ _LOG = get_logger(__name__)
 @view_config(route_name='versioned_home', renderer='json')
 @view_config(route_name='home', renderer='json')
 def index(request):
+    """Summary info - No arguments.
+
+    Returns dict with `description` string and `source_url` and `documentation_url`.
+    """
     return {
         "description": "The Open Tree API",
         "source_url": "https://github.com/mtholder/pyraphyletic",
@@ -49,6 +53,19 @@ def index(request):
 
 @view_config(route_name='generic_config', renderer='json')
 def generic_config(request):
+    """Returns the results of a DocStore.get_configuration_dict() call for the resource type.
+
+    dict with keys:
+        "initialization" -> description of args used to initialize the DocStore
+        "shards" -> list of dicts describing each shard, each with:
+            "document_schema" -> python repr of Doc Schema
+            "path" -> absolute path of repo
+            "documents" -> list of objects with:
+                "keys" -> list of IDs for the document (had to be list in the old days due to
+                    supporting of aliases).
+                "relpath" -> path from the top of the documents dir inside the repo to the document.
+        "number_of_shards" -> length of the "shards" list
+    """
     return umbrella_from_request(request).get_configuration_dict()
 
 
@@ -56,12 +73,14 @@ def generic_config(request):
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='phylesystem_config', renderer='json')
 def phylesystem_config(request):
+    """Study-specific alias to the `generic_config` for study documents."""
     return get_phylesystem_doc_store(request).get_configuration_dict()
 
 
 @view_config(route_name='unmerged_branches', renderer='json')
 def unmerged_branches(request):
     """Returns the non-master branches for a resource_type.
+
     Default is request.matchdict['resource_type'] is 'phylesystem'.
     """
     umbrella = umbrella_from_request(request)
@@ -77,18 +96,21 @@ def unmerged_branches(request):
 
 @view_config(route_name='push_study_via_id', renderer='json', request_method='PUT')
 def push_study_document(request):
+    """Push study to GitHub. See documentation of `generic_push`."""
     request.matchdict['resource_type'] = 'study'
     return push_document(request)
 
 
 @view_config(route_name='push_taxon_amendment_via_id', renderer='json', request_method='PUT')
 def push_amendment_document(request):
+    """Push taxonomic amendment to GitHub. See documentation of `generic_push`."""
     request.matchdict['resource_type'] = 'taxon_amendments'
     return push_document(request)
 
 
 @view_config(route_name='push_tree_collection_via_id', renderer='json', request_method='PUT')
 def push_collection_document(request):
+    """Push tree collection to GitHub. See documentation of `generic_push`."""
     request.matchdict['resource_type'] = 'tree_collections'
     u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
     request.matchdict['doc_id'] = '/'.join(u_c)
@@ -97,6 +119,14 @@ def push_collection_document(request):
 
 @view_config(route_name='generic_push', renderer='json')
 def generic_push(request, doc_id=None):
+    """Core function that performs a push of a shard to GitHub and updates the internal push_failure state.
+
+    Raises an HTTPInternalServerError exception on git errors.
+    Returns a dict of {"error": 0, "description": string} on success.
+
+    Failure to correctly set the push_failure state will be noted in the description field
+    of the response, but is not considered an error if the push operation succeeded.
+    """
     umbrella = umbrella_from_request(request)
     gpj = GitPushJob(request=request,
                      umbrella=umbrella,
@@ -107,11 +137,19 @@ def generic_push(request, doc_id=None):
 
 
 def push_document(request):
+    """Adaptor between views and `generic_push`. See documentation of `generic_push`."""
     return generic_push(request, doc_id=request.matchdict['doc_id'])
 
 
 @view_config(route_name='generic_push_failure', renderer='json')
 def push_failure(request):
+    """View that matches each doc type. Returns a dict reporting the state with respect to pushing to GH.
+
+    keys:
+        "doc_type" -> stringu
+        "pushes_succeeding" -> bool
+        "errors" -> list of errors. Empty if `pushes_succeeding` is True.
+    """
     umbrella = umbrella_from_request(request)
     settings = request.registry.settings
     pfd_lock = settings['push_failure_lock']
@@ -128,12 +166,14 @@ def push_failure(request):
 
 @view_config(route_name='generic_list', renderer='json')
 def generic_list(request):
+    """Returns a list of all of the document IDs in the matched DocStore."""
     return umbrella_from_request(request).get_doc_ids()
 
 
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='study_list', renderer='json')
 def study_list(request):
+    """Study/phylesystem-specific version of doc ID listing."""
     return get_phylesystem_doc_store(request).get_study_ids()
 
 
@@ -142,6 +182,14 @@ def study_list(request):
 
 
 def external_url_generic_helper(umbrella, doc_id, doc_id_key):
+    """Generic impl of the function that returns a dict with a GitHub URL for a document.
+
+    The dict will have 2 keys: the "url" and another with the value of
+        `doc_id_key` that maps to doc_id.
+
+    The new API (impl at the time of v4) uses "doc_id" as the `doc_id_key` for all resources.
+    Earlier versions used `study_id` for studies.
+    """
     try:
         u = umbrella.get_public_url(doc_id)
         return {'url': u, doc_id_key: doc_id}
@@ -153,6 +201,7 @@ def external_url_generic_helper(umbrella, doc_id, doc_id_key):
 
 @view_config(route_name='generic_external_url', renderer='json')
 def external_url(request):
+    """Calls `external_url_generic_helper` for the DocStore. See that function's docs. Uses "doc_id" as a key."""
     umbrella, doc_id = umbrella_with_id_from_request(request)
     return external_url_generic_helper(umbrella, doc_id, 'doc_id')
 
@@ -160,6 +209,7 @@ def external_url(request):
 # TODO: deprecate in favor of generic_external_url
 @view_config(route_name='study_external_url', renderer='json')
 def study_external_url(request):
+    """Old study-specific view of `external_url_generic_helper` that uses "study_id" as a key."""
     phylesystem = get_phylesystem_doc_store(request)
     study_id = request.matchdict['study_id']
     return external_url_generic_helper(phylesystem, study_id, 'study_id')
@@ -174,12 +224,14 @@ def study_external_url(request):
 @view_config(route_name='get_study_via_id_and_ext', renderer='json', request_method='GET')
 @view_config(route_name='get_study_via_id', renderer='json', request_method='GET')
 def get_study_document(request):
+    """GET view for study DocStore. See `get_document` documentation."""
     request.matchdict['resource_type'] = 'study'
     return get_document(request)
 
 
 @view_config(route_name='get_taxon_amendment_via_id', renderer='json', request_method='GET')
 def get_amendment_document(request):
+    """GET view for taxonomic amendments DocStore. See `get_document` documentation."""
     request.matchdict['resource_type'] = 'taxon_amendments'
     request.matchdict['external_url'] = True
     return get_document(request)
@@ -187,6 +239,7 @@ def get_amendment_document(request):
 
 @view_config(route_name='get_tree_collection_via_id', renderer='json', request_method='GET')
 def get_collection_document(request):
+    """GET view for tree collections DocStore. See `get_document` documentation."""
     request.matchdict['resource_type'] = 'tree_collections'
     request.matchdict['external_url'] = True
     u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
@@ -195,7 +248,46 @@ def get_collection_document(request):
 
 
 def get_document(request):
-    """OpenTree API methods relating to reading"""
+    """Implementation of the GET methods for a resource or part of a resource.
+
+    See `subresource_request_helper` documentation for details on which arguments
+        are accepted.
+    Depending on the request parameters, the return type can be either text (e.g. a newick
+        string if just one tree from a study is requested, or an "external" format if
+        translation is requested), or JSON.
+    If no translation to an alternative schema is requested, the document will be returned
+        as the "data" field of a JSON object. In that case, other keys will be:
+        "sha" -> the git SHA for the commit returned.
+        "branch2sha" -> dict describing the work-in-progress branch for the document.
+        "url" -> the requested url
+        "commentHTML" -> HTML converted from markdown comment (if any) embedded in doc.
+        "version_history" -> is an optional return.
+        "external_url" -> if requested this will be the same URL as a call to `external_url`
+        "shardName" -> text description of the shard that holds the document.
+    If the resource requested is a study JSON, then the doi field of the document will be
+        used to
+        if resource_type == 'study':
+            duplicate_study_ids = []
+            try:
+                study_doi = document_blob['nexml']['^ot:studyPublication']['@href']
+            except:
+                pass  # no DOI
+            else:
+                try:
+                    oti_domain = get_otindex_base_url(request)
+                    duplicate_study_ids = find_studies_by_doi(oti_domain, study_doi)
+                except:
+                    _LOG.exception('Call to find_studies_by_doi failed')
+                else:
+                    try:
+                        duplicate_study_ids.remove(doc_id)
+                    except:
+                        pass
+            if duplicate_study_ids:
+                result['duplicateStudyIDs'] = duplicate_study_ids
+
+
+    """
     resource_type = request.matchdict['resource_type']
     umbrella = umbrella_from_request(request)
     subresource_req_dict, params = subresource_request_helper(request)
