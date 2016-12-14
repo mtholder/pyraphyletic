@@ -1,10 +1,8 @@
 markdown
 requests
-celery
 pyramid
 pyramid_chameleon
 pyramid_debugtoolbar
 waitress
-markdown
 bleach
 PyGithub>=1.19.0

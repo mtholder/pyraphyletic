@@ -48,12 +48,15 @@ def check_study_list_and_config_response(test_case,
 def check_unmerged_response(test_case, ub):
     test_case.assertTrue('master' not in ub)
 
+
 def check_config_response(test_case, cfg):
     test_case.assertSetEqual(set(cfg.keys()), {"initialization", "shards", "number_of_shards"})
+
 
 def check_external_url_response(test_case, doc_id, resp):
     test_case.assertEquals(resp.get('doc_id'), doc_id)
     test_case.assertTrue(resp.get('url', '').endswith('{}.json'.format(doc_id)))
+
 
 def check_push_failure_response(test_case, resp):
     test_case.assertSetEqual(set(resp.keys()), {"doc_type", "errors", "pushes_succeeding"})

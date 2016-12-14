@@ -6,6 +6,7 @@ from Queue import Queue
 from threading import Lock, Thread
 
 import requests
+# noinspection PyPackageRequirements
 from github import Github, BadCredentialsException
 from peyotl import (create_doc_store_wrapper,
                     get_logger, GitWorkflowError,
@@ -66,6 +67,7 @@ def get_taxonomy_api_base_url(request):
     return request.registry.settings['taxonomy_api_base_url']
 
 
+# noinspection PyUnusedLocal
 def get_otindex_base_url(request):
     return 'hardcoded incorrect URL'
 
@@ -502,6 +504,7 @@ def subresource_request_helper(request):
     subresource_req_dict['output_format'] = out_fmt
     if resource_type == 'study':
         subresource_type = params.get('subresource_type')
+        # noinspection PyTypeChecker
         out_fmt['schema_version'] = params.get('output_nexml2json', '0.0.0')
         tree_opts = NexsonDocSchema.optional_output_detail_keys
         for trop in tree_opts:
@@ -512,6 +515,7 @@ def subresource_request_helper(request):
             if subresource_id is not None:
                 last_word_was_doc_id = False
                 if '.' in subresource_id:
+                    # noinspection PyUnresolvedReferences
                     subresource_id = '.'.join(subresource_id.split('.')[:-1])
                 subresource_req_dict['subresource_id'] = subresource_id
             # subtrees need (tree_id, subtree_id) as their "subresource_id"
@@ -620,7 +624,11 @@ def get_ids_of_synth_collections():
         raise httpexcept(HTTPGatewayTimeout, 'Could not fetch synthesis list from {}'.format(url_of_synth_config))
     cfg = SafeConfigParser()
     try:
-        cfg.readfp(conf_fo)
+        if hasattr(cfg, "readfp"):
+            # noinspection PyDeprecation
+            cfg.readfp(conf_fo)
+        else:
+            cfg.read_file(conf_fo)
     except:
         raise httpexcept(HTTPInternalServerError, 'Could not parse file from {}'.format(url_of_synth_config))
     try:
