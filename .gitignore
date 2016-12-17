@@ -3,3 +3,4 @@ phylesystem_api.egg-info
 *.pyc
 .coverage
 shards
+server-pid.txt

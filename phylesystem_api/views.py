@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-
+"""The functions that implement views that are part of the phylesystem API. Much
+of the guts of the work is done by functions in phylesystem_api.utility"""
 import itertools
 import json
 import traceback
@@ -24,7 +25,8 @@ from phylesystem_api.utility import (append_tree_to_collection_helper,
                                      get_phylesystem_doc_store, get_taxon_amendments_doc_store,
                                      get_tree_collections_doc_store,
                                      GitPushJob, github_payload_to_amr,
-                                     httpexcept, harvest_ott_ids_from_paths, harvest_study_ids_from_paths,
+                                     httpexcept, harvest_ott_ids_from_paths,
+                                     harvest_study_ids_from_paths,
                                      make_valid_doi, otindex_call,
                                      subresource_request_helper,
                                      trigger_push,
@@ -39,7 +41,7 @@ _LOG = get_logger(__name__)
 # noinspection PyUnusedLocal
 @view_config(route_name='versioned_home', renderer='json')
 @view_config(route_name='home', renderer='json')
-def index(request):
+def index(request):  # pylint: disable=W0613
     """Summary info - No arguments.
 
     Returns dict with `description` string and `source_url` and `documentation_url`.
@@ -119,7 +121,7 @@ def push_collection_document(request):
 
 @view_config(route_name='generic_push', renderer='json')
 def generic_push(request, doc_id=None):
-    """Core function that performs a push of a shard to GitHub and updates the internal push_failure state.
+    """Core function that pushes of a shard to GitHub and updates the internal push_failure state.
 
     Raises an HTTPInternalServerError exception on git errors.
     Returns a dict of {"error": 0, "description": string} on success.
@@ -143,7 +145,7 @@ def push_document(request):
 
 @view_config(route_name='generic_push_failure', renderer='json')
 def push_failure(request):
-    """View that matches each doc type. Returns a dict reporting the state with respect to pushing to GH.
+    """View that matches each doc type. Returns a dict reporting the state wrt pushing to GH.
 
     keys:
         "doc_type" -> stringu
@@ -154,7 +156,9 @@ def push_failure(request):
     settings = request.registry.settings
     pfd_lock = settings['push_failure_lock']
     pfd = settings['doc_type_to_push_failure_list']
-    pf = copy_of_push_failures(push_failure_dict=pfd, push_failure_dict_lock=pfd_lock, umbrella=umbrella)
+    pf = copy_of_push_failures(push_failure_dict=pfd,
+                               push_failure_dict_lock=pfd_lock,
+                               umbrella=umbrella)
     return {'doc_type': umbrella.document_type,
             'pushes_succeeding': len(pf) == 0,
             'errors': pf, }
@@ -201,7 +205,7 @@ def external_url_generic_helper(umbrella, doc_id, doc_id_key):
 
 @view_config(route_name='generic_external_url', renderer='json')
 def external_url(request):
-    """Calls `external_url_generic_helper` for the DocStore. See that function's docs. Uses "doc_id" as a key."""
+    """Calls `external_url_generic_helper` for the DocStore with "doc_id" as a key."""
     umbrella, doc_id = umbrella_with_id_from_request(request)
     return external_url_generic_helper(umbrella, doc_id, 'doc_id')
 
@@ -338,12 +342,13 @@ def get_document(request):
         try:
             comment_html = render_markdown(umbrella.get_markdown_comment(result_data))
         except:
-            comment_html = ''
+            comment_html = ''  # pylint: disable=R0204
         result['commentHTML'] = comment_html
         try:
             if version_history is not None:
                 result['version_history'] = version_history
-                result['versionHistory'] = result['version_history']  # TODO get rid of camelCaseVersion
+                # TODO get rid of camelCaseVersion
+                result['versionHistory'] = result['version_history']
         except:
             _LOG.exception('populating of version_history failed for {}'.format(doc_id))
         try:
@@ -384,18 +389,31 @@ def get_document(request):
 
 @view_config(route_name='put_study_via_id', renderer='json', request_method='PUT')
 def put_study_document(request):
+    """PUT method for editing an existing study.
+    Adds "resource_type" -> "study" then calls generic `put_document`.
+    See `finish_write_operation` for description of the response.
+    """
     request.matchdict['resource_type'] = 'study'
     return put_document(request)
 
 
 @view_config(route_name='put_taxon_amendment_via_id', renderer='json', request_method='PUT')
 def put_amendment_document(request):
+    """PUT method for editing an existing taxon amendment.
+    Adds "resource_type" -> "taxon_amendments" then calls generic `put_document`.
+    See `finish_write_operation` for description of the response.
+    """
     request.matchdict['resource_type'] = 'taxon_amendments'
     return put_document(request)
 
 
 @view_config(route_name='put_tree_collection_via_id', renderer='json', request_method='PUT')
 def put_collection_document(request):
+    """PUT method for editing an existing tree_collection.
+    Adds "resource_type" -> "tree_collections" and
+    "doc_id" then calls generic `put_document`.
+    See `finish_write_operation` for description of the response.
+    """
     request.matchdict['resource_type'] = 'tree_collections'
     u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
     request.matchdict['doc_id'] = '/'.join(u_c)
@@ -403,11 +421,13 @@ def put_collection_document(request):
 
 
 def put_document(request):
-    """Open Tree API methods relating to updating existing resources"""
+    """Open Tree API methods relating to updating existing resources.
+    See `finish_write_operation` for description of the response.
+    """
     document, put_args = extract_write_args(request)
     if put_args.get('starting_commit_SHA') is None:
-        raise httpexcept(HTTPBadRequest,
-                         'PUT operation expects a "starting_commit_SHA" argument with the SHA of the parent')
+        msg = 'PUT operation expects a "starting_commit_SHA" argument with the SHA of the parent'
+        raise httpexcept(HTTPBadRequest, msg)
     if put_args.get('doc_id') is None:
         raise httpexcept(HTTPBadRequest, 'PUT operation expects a URL that ends with a document ID')
     umbrella = umbrella_from_request(request)
@@ -420,10 +440,22 @@ def put_document(request):
 
 @view_config(route_name='post_study', renderer='json', request_method='POST')
 def post_study_document(request):
+    """POST of a new study.
+    See `extract_write_args` for a description of the arguments that are extracted from the
+    request object.
+    The content of the new study is populated based on the value of "import_method":
+        "import-method-TREEBASE_ID" should be accompanied with at "treebase_id" argument
+        "import-method-PUBLICATION_DOI" or "import-method-PUBLICATION_DOI" values
+            should be accompanied with at "publication_DOI" or "publication_reference" argument
+        "import-method-POST" is used to indicate that the body of the POST should contain the study
+
+    See `finish_write_operation` for description of the response.
+    """
     request.matchdict['resource_type'] = 'study'
     document, post_args = extract_write_args(request, study_post=True, require_document=False)
     if post_args.get('doc_id') is not None:
-        raise httpexcept(HTTPBadRequest, 'POST operation does not expect a URL that ends with a document ID')
+        msg = 'POST operation does not expect a URL that ends with a document ID'
+        raise httpexcept(HTTPBadRequest, msg)
     umbrella = umbrella_from_request(request)
     import_method = post_args['import_method']
     nsv = umbrella.document_schema.schema_version
@@ -450,16 +482,19 @@ def post_study_document(request):
             msg = "Unexpected error parsing the file obtained from TreeBASE. " \
                   "Please report this bug to the Open Tree of Life developers."
             raise httpexcept(HTTPBadRequest, msg)
-    elif import_method == 'import-method-PUBLICATION_DOI' or import_method == 'import-method-PUBLICATION_REFERENCE':
+    elif import_method == 'import-method-PUBLICATION_DOI' \
+            or import_method == 'import-method-PUBLICATION_REFERENCE':
         if not (publication_ref or publication_doi_for_crossref):
-            msg = 'Did not find a valid DOI in "publication_DOI" or a reference in "publication_reference" arguments.'
+            msg = 'Did not find a valid DOI in "publication_DOI" or a reference in ' \
+                  '"publication_reference" arguments.'
             raise httpexcept(HTTPBadRequest, msg)
         document = import_nexson_from_crossref_metadata(doi=publication_doi_for_crossref,
                                                         ref_string=publication_ref,
                                                         include_cc0=cc0_agreement)
     elif import_method == 'import-method-POST':
         if not document:
-            msg = 'Could not read a NexSON from the body of the POST, but import_method="import-method-POST" was used.'
+            msg = 'Could not read a NexSON from the body of the POST, but ' \
+                  'import_method="import-method-POST" was used.'
             raise httpexcept(HTTPBadRequest, msg)
     else:
         document = umbrella.document_schema.create_empty_doc()
@@ -470,21 +505,36 @@ def post_study_document(request):
 
 @view_config(route_name='post_taxon_amendment', renderer='json', request_method='POST')
 def post_amendment_document(request):
+    """POST of a new taxonomic amendment in the body of the POST.
+    See `extract_write_args` for a description of the arguments that are extracted from the
+    request object.
+    See `finish_write_operation` for description of the response.
+    """
     request.matchdict['resource_type'] = 'taxon_amendments'
     return post_document(request)
 
 
 @view_config(route_name='post_tree_collection', renderer='json', request_method='POST')
 def post_collection_document(request):
+    """POST of a new tree collection in the body of the POST.
+    See `extract_write_args` for a description of the arguments that are extracted from the
+    request object.
+    See `finish_write_operation` for description of the response.
+    """
     request.matchdict['resource_type'] = 'tree_collections'
     return post_document(request)
 
 
 def post_document(request):
-    """Open Tree API methods relating to creating a new resource"""
+    """Open Tree API methods relating to creating a new resource.
+    See `extract_write_args` for a description of the arguments that are extracted from the
+    request object.
+    See `finish_write_operation` for description of the response.
+    """
     document, post_args = extract_write_args(request)
     if post_args.get('doc_id') is None:
-        raise httpexcept(HTTPBadRequest, 'POST operation does not expect a URL that ends with a document ID')
+        msg = 'POST operation does not expect a URL that ends with a document ID'
+        raise httpexcept(HTTPBadRequest, msg)
     umbrella = umbrella_from_request(request)
     return finish_write_operation(request, umbrella, document, post_args)
 
@@ -494,18 +544,21 @@ def post_document(request):
 
 @view_config(route_name='delete_study_via_id', renderer='json', request_method='DELETE')
 def delete_study_document(request):
+    """Delete a study. Return from peyotl.TypeAwareDocStore.delete_document"""
     request.matchdict['resource_type'] = 'study'
     return delete_document(request)
 
 
 @view_config(route_name='delete_taxon_amendment_via_id', renderer='json', request_method='DELETE')
 def delete_amendment_document(request):
+    """Delete a taxonomic amendment. Return from peyotl.TypeAwareDocStore.delete_document"""
     request.matchdict['resource_type'] = 'taxon_amendments'
     return delete_document(request)
 
 
 @view_config(route_name='delete_tree_collection_via_id', renderer='json', request_method='DELETE')
 def delete_collection_document(request):
+    """Delete a tree collection. Return from peyotl.TypeAwareDocStore.delete_document"""
     request.matchdict['resource_type'] = 'tree_collections'
     u_c = [request.matchdict.get('coll_user_id', ''), request.matchdict.get('coll_id', ''), ]
     request.matchdict['doc_id'] = '/'.join(u_c)
@@ -513,6 +566,10 @@ def delete_collection_document(request):
 
 
 def delete_document(request):
+    """Doees the work of the delete views.
+    Return from peyotl.TypeAwareDocStore.delete_document
+    Uses "starting_commit_SHA", "commit_msg", "doc_id" and arugments from `authenticate`
+    """
     args = extract_write_args(request, require_document=False)[1]
     parent_sha = args['starting_commit_SHA']
     commit_msg = args['commit_msg']
@@ -528,23 +585,30 @@ def delete_document(request):
         _LOG.exception('Exception deleting document {} in DELETE'.format(doc_id))
     else:
         if x.get('error') == 0:
-            trigger_push(request, umbrella=umbrella, doc_id=doc_id, operation="DELETE", auth_info=auth_info)
+            trigger_push(request,
+                         umbrella=umbrella,
+                         doc_id=doc_id,
+                         operation="DELETE",
+                         auth_info=auth_info)
         return x
 
 
 @view_config(route_name='fetch_all_amendments', renderer='json')
 def fetch_all_amendments(request):
+    """Returns all amendements. See `fetch_all_docs_and_last_commit`"""
     return fetch_all_docs_and_last_commit(get_taxon_amendments_doc_store(request))
 
 
 @view_config(route_name='fetch_all_collections', renderer='json')
 def fetch_all_collections(request):
+    """Returns all tree collections. See `fetch_all_docs_and_last_commit`"""
     return fetch_all_docs_and_last_commit(get_tree_collections_doc_store(request))
 
 
 # TODO: deprecate in favor of generic_list
 @view_config(route_name='amendment_list', renderer='json')
 def list_all_amendments(request):
+    """Returns a list of all amendment IDs in the doc store"""
     return get_taxon_amendments_doc_store(request).get_doc_ids()
 
 
@@ -558,7 +622,8 @@ def study_options(request):
     if request.env.http_access_control_request_method:
         response.headers['Access-Control-Allow-Methods'] = 'POST,GET,DELETE,PUT,OPTIONS'
     if request.env.http_access_control_request_headers:
-        response.headers['Access-Control-Allow-Headers'] = 'Origin, Content-Type, Accept, Authorization'
+        headers = 'Origin, Content-Type, Accept, Authorization'
+        response.headers['Access-Control-Allow-Headers'] = headers
     return response
 
 
@@ -579,7 +644,8 @@ def nudge_study_index(request):
     N.B. This depends on a GitHub webhook on the chosen docstore.
     """
     payload = extract_posted_data(request)
-    add_or_update_ids, modified, remove_ids = github_payload_to_amr(payload, harvest_study_ids_from_paths)
+    add_or_update_ids, modified, remove_ids = github_payload_to_amr(payload,
+                                                                    harvest_study_ids_from_paths)
     add_or_update_ids.add(modified)
     sds = get_phylesystem_doc_store(request)
     # this check will not be sufficient if we have multiple shards
@@ -619,7 +685,8 @@ def nudge_taxon_index(request):
     amendments_repo_url = tads.remote_docstore_url
     if payload['repository']['url'] != amendments_repo_url:
         raise httpexcept(HTTPBadRequest, "wrong repo for this API instance")
-    added_ids, modified_ids, removed_ids = github_payload_to_amr(payload, harvest_ott_ids_from_paths)
+    added_ids, modified_ids, removed_ids = github_payload_to_amr(payload,
+                                                                 harvest_ott_ids_from_paths)
     msg_list = []
     # build a working URL, gather amendment body, and nudge the index!
     amendments_api_base_url = get_taxonomy_api_base_url(request)
@@ -658,10 +725,10 @@ def nudge_taxon_index(request):
 
 def synth_collection_helper(request):
     """Returns tuple of four elements:
-        [0] tree_collection_doc_store,
-        [1] list of the synth collection IDs
-        [2] a list of each of the synth collection objects in the same order as coll_id_list
-        [3] a collection that is a concatenation of synth collections
+    [0] tree_collection_doc_store,
+    [1] list of the synth collection IDs
+    [2] a list of each of the synth collection objects in the same order as coll_id_list
+    [3] a collection that is a concatenation of synth collections
     """
     coll_id_list = get_ids_of_synth_collections()
     cds = get_tree_collections_doc_store(request)
@@ -678,12 +745,18 @@ def synth_collection_helper(request):
 
 @view_config(route_name='trees_in_synth', renderer='json')
 def trees_in_synth(request):
+    """Returns a collection that is the concatenation of all trees queued for synthesis."""
     return synth_collection_helper(request)[3]
 
 
 @view_config(route_name='include_tree_in_synth', renderer='json', request_method="POST")
 def include_tree_in_synth(request):
-    data, study_id, tree_id, auth_info = collection_args_helper(request)
+    """Adds a (study_id, tree_id) pair to the last (default) collection used in synthesis.
+    See `collection_args_helper` for args used.
+    :raises HTTPNotFound if the (study_id, tree_id) is not in the set of studies.
+    :return collection that is the concatenation of all trees queued for synthesis.
+    """
+    study_id, tree_id, auth_info = collection_args_helper(request)[1:]
     # examine this study and tree, to confirm it exists *and* to capture its name
     sds = get_phylesystem_doc_store(request)
     try:
@@ -697,25 +770,37 @@ def include_tree_in_synth(request):
         msg = "Specified tree '{t}' in study '{s}' not found! Save this study and try again?"
         _LOG.exception(msg)
         raise httpexcept(HTTPNotFound, msg.format(s=study_id, t=tree_id))
-    cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
+    x = synth_collection_helper(request)
+    cds, coll_id_list, current_synth_coll = x[0], x[1], x[3]
     if cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
         return current_synth_coll
     commit_msg = "Added via API (include_tree_in_synth)"
+    ref = found_study.get('nexml', {}).get('^ot:studyPublicationReference', '')
     comment = commit_msg + " from {p}"
-    comment = comment.format(p=found_study.get('nexml', {}).get('^ot:studyPublicationReference', ''))
+    comment = comment.format(p=ref)
     decision = cds.create_tree_inclusion_decision(study_id=study_id,
                                                   tree_id=tree_id,
                                                   name=found_tree_name,
                                                   comment=comment)
     # find the default synth-input collection and parse its JSON
     default_collection_id = coll_id_list[-1]
-    append_tree_to_collection_helper(request, cds, default_collection_id, decision, auth_info, commit_msg=commit_msg)
+    append_tree_to_collection_helper(request,
+                                     cds,
+                                     default_collection_id,
+                                     decision,
+                                     auth_info,
+                                     commit_msg=commit_msg)
     return trees_in_synth(request)
 
 
 @view_config(route_name='exclude_tree_from_synth', renderer='json', request_method="POST")
 def exclude_tree_from_synth(request):
-    data, study_id, tree_id, auth_info = collection_args_helper(request)
+    """Removes a (study_id, tree_id) pair to the last (default) collection used in synthesis.
+    See `collection_args_helper` for args used.
+    :raises HTTPNotFound if the (study_id, tree_id) is not in the set of studies.
+    :return collection that is the concatenation of all trees queued for synthesis.
+    """
+    study_id, tree_id, auth_info = collection_args_helper(request)[1:]
     cds, coll_id_list, coll_list, current_synth_coll = synth_collection_helper(request)
     if not cds.collection_includes_tree(current_synth_coll, study_id, tree_id):
         return current_synth_coll
@@ -723,17 +808,19 @@ def exclude_tree_from_synth(request):
     for coll_id, coll in itertools.izip(coll_id_list, coll_list):
         if cds.collection_includes_tree(coll, study_id, tree_id):
             try:
+                msg = "Updated via API (exclude_tree_from_synth)"
                 r = cds.purge_tree_from_collection(coll_id,
                                                    study_id=study_id,
                                                    tree_id=tree_id,
                                                    auth_info=auth_info,
-                                                   commit_msg="Updated via API (exclude_tree_from_synth)")
+                                                   commit_msg=msg)
                 commit_return = r
             except GitWorkflowError, err:
                 raise httpexcept(HTTPInternalServerError, err.msg)
             except:
                 raise httpexcept(HTTPBadRequest, traceback.format_exc())
-            # We only need to push once per affected shard even if multiple collections in the shard change...
+            # We only need to push once per affected shard even if multiple
+            # collections in the shard change...
             mn = commit_return.get('merge_needed')
             if (mn is not None) and (not mn):
                 shard = cds.get_shard(coll_id)
@@ -748,6 +835,12 @@ def exclude_tree_from_synth(request):
 
 @view_config(route_name='render_markdown', request_method='POST')
 def render_markdown(request):
+    """Reads a markdown str "src" from a JSON body of the HTTP request and returns the HTML version.
+
+    :param request: with data["src"] field
+    :return: HTML representation of the markdown
+    :raises HTTPBadRequest if the input is not found.
+    """
     data = extract_posted_data(request)
     try:
         src = data['src']
@@ -755,11 +848,13 @@ def render_markdown(request):
         raise httpexcept(HTTPBadRequest, '"src" parameter not found in POST')
 
     # noinspection PyUnusedLocal
-    def add_blank_target(attrs, new=False):
+    def add_blank_target(attrs, new=False):  # pylint: disable=W0613
+        """Hook to add target="_blank" to links created by bleach.linkify"""
         attrs['target'] = '_blank'
         return attrs
 
     h = markdown.markdown(src)
-    h = bleach.clean(h, tags=['p', 'a', 'hr', 'i', 'em', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'])
+    ct = ['p', 'a', 'hr', 'i', 'em', 'b', 'div', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4']
+    h = bleach.clean(h, tags=ct)
     h = bleach.linkify(h, callbacks=[add_blank_target])
     return Response(h)

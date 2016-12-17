@@ -1,17 +1,19 @@
-# from phylesystem_api.util import get_phylesystem
+"""The main function needed to configure pyramids to run the phylesystem API."""
+import logging
 from pyramid.config import Configurator
 from pyramid.request import Request
 from pyramid.request import Response
 from phylesystem_api.utility import fill_app_settings
-import logging
 
 _LOG = logging.getLogger(__name__)
 
 
-# Adapted from:
-#   http://stackoverflow.com/questions/21107057/pyramid-cors-for-ajax-requests
-# and our previous CORS headers (in the web2py version of the phylesystem-api)
 def request_factory(environ):
+    """Factory function that adds the headers necessary for Cross-domain calls.
+
+    Adapted from:
+       http://stackoverflow.com/questions/21107057/pyramid-cors-for-ajax-requests
+    """
     request = Request(environ)
     if request.is_xhr:
         request.response = Response()
@@ -28,8 +30,7 @@ def request_factory(environ):
 
 
 def main(global_config, **settings):
-    """ This function returns a Pyramid WSGI application.
-    """
+    """Return a Pyramid WSGI application after configuring the routes for phylesystem API."""
     _LOG.debug('main running from "{}" and called with "{}"'.format(global_config['here'],
                                                                     global_config['__file__']))
     from phylesystem_api.utility import get_resource_type_to_umbrella_name_copy
