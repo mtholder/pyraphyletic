@@ -11,38 +11,18 @@ pyramid.debug_authorization = false
 pyramid.debug_notfound = false
 pyramid.debug_routematch = false
 pyramid.default_locale_name = en
-pyramid.includes =
-    pyramid_debugtoolbar
-
-##############################################################
-# the full path to the parent of the  phylesystem-# git dir(s) can be found
-repo_parent   = REPO_PAR
-
-#################################################
-# the remote to push changes to
-# This will usually be "origin" on a local dev machine where phylesystem.git
-#   was cloned via SSH (git@github.com:...)
-# On deployed servers, which use anonymous git:// protocol, we add a new
-#   remote "originssh" which can be pushed to
-repo_remote = REPO_REMOTE
-
-# these allow us to specify the SSH keys that git pushes
-# will use. Leave the config keys in this config file,
-# without any values assigned, to not use this feature
-git_ssh     = GIT_SSH
-pkey        = PKEY
-
-# Push scripts will substitute the OTI_BASE_URL server-config variables, shared
-# with other apps.
-oti_base_url = OTI_BASE_URL
-opentree_docstore_url = OPENTREE_DOCSTORE_URL
-
-# prefix for the GitHubRemote used in the push mirror
-# git_hub_remote = git@github.com:OpenTreeOfLife
+pyramid.includes = pyramid_debugtoolbar
 
 # By default, the toolbar only appears for clients from IP addresses
 # '127.0.0.1' and '::1'.
 # debugtoolbar.hosts = 127.0.0.1 ::1
+
+##############################################################
+# the full path to the parent of the  phylesystem-# git dir(s) can be found
+repo_parent   = REPO_PAR
+# Endpoint for indexing
+oti_base_url = https://devapi.opentreeoflife.org/
+
 
 ###
 # wsgi server configuration
@@ -59,7 +39,7 @@ port = 6543
 ###
 
 [loggers]
-keys = root, phylesystem_api
+keys = root,phylesystemapi
 
 [handlers]
 keys = console
@@ -68,12 +48,12 @@ keys = console
 keys = generic
 
 [logger_root]
-level = INFO
+level = DEBUG
 handlers = console
 
-[logger_phylesystem_api]
-level = OPEN_TREE_API_LOGGING_LEVEL
-handlers =
+[logger_phylesystemapi]
+level = DEBUG
+handlers = console
 qualname = phylesystem_api
 
 [handler_console]
