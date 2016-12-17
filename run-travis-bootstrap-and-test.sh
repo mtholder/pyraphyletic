@@ -19,5 +19,5 @@ bash setup-travis-testing-repos.sh || exit 1
 python setup.py develop || exit
 
 pserve --pid-file=server-pid.txt -v development.ini &
-bash check.sh || exit
+bash full_dev_check.sh || exit
 kill $(cat server-pid.txt)
