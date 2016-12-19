@@ -20,7 +20,6 @@ export PYTHONPATH="${PYTHONPATH}:${PWD}"
 
 cd "${currd}"
 
-
 pip install -r requirements.txt || exit
 pip install -r devrequirements.txt || exit
 
@@ -30,6 +29,10 @@ bash setup-travis-testing-repos.sh || exit 1
 export LOCAL_TESTING_MODE=1
 export GITHUB_OAUTH_TOKEN=bogus
 python setup.py develop || exit
+
+cp ws-tests/local.test.conf ws-tests/test.conf
+cp ws-write-tests/local.test.conf ws-write-tests/test.conf
+
 
 pserve -v development.ini &
 serverpid=`echo $!`
