@@ -6,6 +6,26 @@ The project's [APIs Page](https://github.com/OpenTreeOfLife/opentree/wiki/Open-T
 provides a summary of the other APIs and the "public" portions
 of this API.
 
+The "phylesystem API" refers to the APIs that govern the data
+curated by users of Open Tree of Life.
+All of the data served these APIs is all stored in git repositories
+    with peyotl's TypeAwareDocStore instances that wrap the 
+    git repos and provide basic CRUD functionality.
+Inside the implementation, every edit operation is performed on a "work in progress"
+ branch to assure that the user's edits are saved.
+Each edit then triggers an attempt to update the master branch of the repo.
+If the same document has not been edited on the master branch, then the
+ "work in progress" branch will be merged onto the master and the edits will be
+ pushed to GitHub.
+If the same document has been edited, the response will indicate that a merge
+ is needed; the edits will still be stored on the server of the API, but will
+ not be visible on GitHub until the changes have been merged.
+Note that this is quite conservative in that even compatible chnages will fail
+ to merge; however, given the low levels of usage thus far, this design
+ decision has not caused major problems.
+
+
+### Versioning in URLs:  http://{domain}/phylesystem/`v{#}`/...
 All API calls are specific to the API version, which is a part
 of the URL. 
 This allows for new versions of the Phylesystem API to come out
@@ -25,17 +45,6 @@ behavior on devapi depends on what branch of code has been deployed
 there (see [the germinator/deploy/README](https://github.com/OpenTreeOfLife/germinator/tree/master/deploy) 
 for details on deployment).
 
-
-**NOTE**: Interface details for the non-public APIs are still under
-are subject to change.
-
-## Open Tree Phylesystem API Methods
-
-### Versioning in URLs:  http://{domain}/phylesystem/`v{#}`/...
-All API calls are specific to the API version, which is a part
-of the URL. This allows for new versions of the Phylesystem API to come out
-which are not backward-compatible, while allowing old clients
-to continue working with older API versions.
 Currently v3 is deployed, and for the phylesystem API many methods are unchanged from v1-v4.
 
 **NOTE**: substituting `https://devapi` for `https://api` will let you acess the more "bleeding edge" 
@@ -43,7 +52,7 @@ deployments of the code.
 
 **NOTE**: Interface details are still under development and host names and paths are subject to change.
 
-### Resource stores in URLs:  http://{domain}/phylesystem/v#/`{resource}`/...
+### Resource stores in URLs:  http://{domain}/phylesystem/v{#}/`{resource}`/...
 Currently API is used to manage 3 types of documents: phylogenetic studies, taxonomic amendments,
  and tree collections.
 The methods described can typically be appended to the end, after
@@ -59,10 +68,44 @@ of a resource
 | tree collections | `tree_collection` | `tree_collections`, `collections`, `collection` |
 | taxonomic amendments | `taxon_amendment` | `taxon_amendments`, `amendments`, `amendment` |
 
+### `auth_token` argument of write-methods
+To associate edits with a user, the methods that result in changes to the corpus
+    of data requires an authentication token that is supplied as the 
+    value of an `auth_token` parameter.
+
+
+To get a Github OAuth token, you can use ```curl```:
+
+    curl -u USERNAME -X POST https://api.github.com/authorizations \
+        --data '{"scopes":["public_repo"],"note":"description"}'
+
+where USERNAME is your Github login/username. The above will
+return JSON containing a "token" key, which is your new OAuth
+token. To run the write-tests, you can then put the auth token
+into an environment variable:
+
+    export GITHUB_OAUTH_TOKEN=codecafe
+
+In the Open Tree curation webapp, we obtain this when a user logs into the
+site via Github. Github returns a persistent token that streamlines
+authentication in the future. (Basically, the user shouldn't need to login
+again unless they revoke access to the curation app on Github.)
+
+Here are other tips on managing auth tokens programmatically:
+
+http://developer.github.com/v3/oauth/#get-or-create-an-authorization-for-a-specific-app
+
+
+Also note that if you run the server in an environment with
+the variable `LOCAL_TESTING_MODE=1`, the auth_token will not be
+validated and dummy user names will be used in commits. This is useful
+for testing via TravisCI, for instance.
+
+## Open Tree Phylesystem API Methods
 
 ## Methods
 
-#### index: `index`
+#### index: `v{#}/index`
 
 	curl https://api.opentreeoflife.org/phylesystem/v3/index
 
@@ -75,7 +118,7 @@ will return a JSON object with `documentation_url`, `description`, and
     "source_url": "https://github.com/mtholder/pyraphyletic"
     }
 
-#### list: `study/list`, `amendment/list`, and `tree_collection/list`
+#### list: `v{#}/{resource}/list`
 
     curl https://api.opentreeoflife.org/phylesystem/v1/study/list
 
@@ -91,7 +134,7 @@ Returns a JSON array of all of the study IDs.  Example output:
 Deprecated URL: `http://{domain}/phylesystem/v1/study_list`
 
 
-#### config: `study/config`, `amendment/config`, and `tree_collection/config`
+#### config: `v{#}/{resource}/config`
 
     curl https://api.opentreeoflife.org/phylesystem/v3/study/config
 
@@ -131,97 +174,75 @@ The "initialization" key that is returned by the call should be deprecated or
 
 Deprecated URL: `http://{domain}/phylesystem/v1/phylesystem_config`
 
-# OLD CRUFT below here!
 
+#### external_url: `v{#}/{resource}/external_url/{doc_id}`
 
-#### external_url
-
-    curl https://api.opentreeoflife.org/phylesystem/external_url/9
+    curl https://api.opentreeoflife.org/v3/study/external_url/pg_09
 
 Returns a JSON object with the canonical study ID and a url for the version of the 
 study in the repo on the master branch:
 
     {
         "url": "https://raw.githubusercontent.com/OpenTreeOfLife/phylesystem-0/master/study/pg_09/pg_09/pg_09.json", 
-        "study_id": "9"
+        "doc_id": "pg_09"
     }
 
-### Getting a Github Oauth token
 
-Any API methods that allow writing (or changing the state of
-the repo) require an authentication token. The examples below
-assume a Github Oauth token is stored in the environment
-variable
-
-    $GITHUB_OAUTH_TOKEN
-
-To get a Github OAuth token, you can use ```curl``` as well:
-
-    curl -u USERNAME -X POST https://api.github.com/authorizations \
-        --data '{"scopes":["public_repo"],"note":"description"}'
-
-where USERNAME is your Github login/username. The above will
-return JSON containing a "token" key, which is your new OAuth
-token.
-
-To put it into an environment variable:
-
-    export GITHUB_OAUTH_TOKEN=codecafe
-
-In the Open Tree curation webapp, we obtain this when a user logs into the
-site via Github. Github returns a persistent token that streamlines
-authentication in the future. (Basically, the user shouldn't need to login
-again unless they revoke access to the curation app on Github.)
-
-Here are other tips on managing auth tokens programmatically:
-
-http://developer.github.com/v3/oauth/#get-or-create-an-authorization-for-a-specific-app
-
-### WIP branches
-
-We use "WIP" to stand for "Work in progress" branch. The naming convention
-for these branches are:
-
-    <curator github login>_study_<study #>_<WIP counter>
-
-So if `mtholder` has 2 WIPs for study 9, they will show up as:
-
-    mtholder_study_9_0
-    mtholder_study_9_1
-
-As discussed below, WIPs are created on a PUT. They are merged back to master and deleted
-if the master's version of the study has not advanced in the interim between
-GET and PUT. Thus, the WIPs are often very ephemeral and not 
-noticeable by the user.
-
-If the master has advanced, the WIP will be retained so that future PUT
-operations by the curator will be guaranteed to be conflict-free 
-updates somewhere in the repo. A call to `merge` will be needed to
-merge the updated content from the master into the WIP. After the
-merge (and subsequent PUTs) succeed, then the WIP should be 
-able to merge to the master branch (resulting in the deletion of the WIP).
-
-Clients of the Phylesystem API need never refer to the WIP names. All communication about
-versions happens via SHA values.
-However, they are returned in the `branch2sha` map from GET so that the 
-curation client can remind the curator of any WIPs that they have started but 
-not merged.
+Deprecated URL: `https://api.opentreeoflife.org/phylesystem/external_url/pg_09` which
+    will return a key of "study_id" rather than "doc_id".
 
 
-### Fetch a study
+### Fetch a resource `v{#}/{resource}/{doc_id}`
 
-To get the entire NexSON of study N :
+To get the entire NexSON of study `pg_09` :
 
-    curl https://api.opentreeoflife.org/phylesystem/v1/study/STUDYID.json
+    curl https://api.opentreeoflife.org/phylesystem/v2/study/pg_09
     
-where STUDYID is of the form namespace_XX, for example pg_199 or ot_29.
-You can find the STUDYID of a study of interest by opening it in curation and looking at the url.
+You can find the document ID of a study of interest by opening it in curation
+ and looking at the url.
 
-Or equivalently, (after v2 has been it is deployed to the dev server):
+Example repsonse:
 
-    curl https://devapi.opentreeoflife.org/v2/study/STUDYID.json
+    {
+    "branch2sha": {"master": "e24ff48c78bfdfa870c81e385b5dec26d4e63a31"},
+    "commentHTML": "",
+    "data": {"nexml": ...},
+    "sha": "e24ff48c78bfdfa870c81e385b5dec26d4e63a31",
+    "shardName": "mini_phyl",
+    "url": "http://127.0.0.1:6543/v4/study/xy_10",
+    "versionHistory": [...],
+    "version_history": [
+        {
+            "author_email": "mtholder@gmail.com",
+            "author_name": "Mark T. Holder",
+            "date": "Thu, 11 Dec 2014 09:28:15 +0100",
+            "date_ISO_8601": "2014-12-11 09:28:15 +0100",
+            "id": "2d59ab892ddb3d09d4b18c91470b8c1c4cca86dc",
+            "message_subject": "making the structure of this repo more like the otol phylesystem repo. forgot about the middle layer",
+            "relative_date": "2 years ago"
+        }
+    ]
+    }
 
-#### GET arguments
+The keys of the response:
+  * `data` will hold the resource requested.
+  * `sha` holds the SHA that identifies the version of the data that was returned. 
+  It can also be used as the `starting_commit_SHA` in future GET calls to return the same data.
+  * `url` the URL of the resource
+  * `branch2sha` will hold a map of branch names 2 SHA mappings for all of the
+    unmerged branches that relate to this resource. Typically, it will just hold
+    `master` and the `sha` of the master branch, but if there are unmerged branches,
+    they will be recorded here.
+   * `version_history` is a list of information about commits that affected this resource.
+     This information is also returned as a `versionHistory` key for backward compatibility.
+     This information may be deprecated soon, or moved to "only when requested" basis.
+   * `commentHTML` if the document has a `^ot:comment` markdown property, then this 
+    will be translated to HTML and returned here. This field may be deprecated soon.
+   * `shardName` refers to an implemenation detail (the git home of the document). 
+   This field may be deprecated in v4.
+
+#### study-specific GET details
+##### Arguments of study GET
 *   The `output_nexml2json` arg specifies the version of the NeXML -> NexSON 
 mapping to be used. See [the NexSON wiki](https://github.com/OpenTreeOfLife/api.opentreeoflife.org/wiki/HoneyBadgerFish)
 for details. Currently the only supported values are:
@@ -234,53 +255,7 @@ Consider the call without the output_nexml2json argument to be brittle!
 which will return the version of the study from a specific commit sha.
 If no `starting_commit_SHA` is given, GET will return study from master.
 
-
-
-#### GET response
-
-On success, a request for the full study in NexSON will return
- a JSON response similar to this:
-
-    {
-        "sha":  "e13343535837229ced29d44bdafad2465e1d13d8",
-        "data": <Study NexSON object>,
-        "branch2sha": WIP map
-        "versionHistory": [history objects]
-    }
-
-*   `sha` is the parent sha of that GET and will need to be returned with 
-edited study on a PUT. It can also be used as the `starting_commit_SHA`
-in future GET calls to return the same data.
-*   `data` will be the NexSON object using the syntactic convention
-that was specified in `output_nexml2json` argument, and with the 
-validator AnnotationEvent included.
-*   `branch2sha` is an object summarizing the WIP branches for this study.
-The keys will be the names of the branch; the value will be the commit `sha`
-values that can be used in a GET call to get that version of the study. The
-content of the key before the`_study_.*` regex pattern will be the name
-of the curator whose PUT created the branch). An example `branch2sha` map is:
-
-    {
-        "mtholder_study_9_0": "f8d6ddacc2cef7a54847a4067ccb45915a4b4ebc",
-        "master": "0841f890259686d74c7c1749a87026e1c4193ca0"
-    }
-
-*   `versionHistory` is a list of the history of edits to the study since
-import or since transfer from phylografter (the edit history within phylografter
-is not stored, although a curatorName field is maintained by phylografter). Each object will
-contain the following information:
-
-    {
-    "author_email": <email of person who edited (if this is public in their GitHub profile)>, 
-    "author_name": <name of person who edited (if this is public in their GitHub profile)>, 
-    "message_subject": <summary line of the edit commit>,
-    "date_ISO_8601": "2014-05-29 12:02:40 -0500",
-    "date": "Thu, 29 May 2014 12:02:40 -0500", 
-    "id": <commit sha>, 
-    "relative_date": "7 days ago"
-    }
-
-##### Output conversion of GET
+##### Output conversion of study GET
 If the URL ends with a file extension, then the file type will be inferred for file conversion:
   * .nex -> NEXUS
   * .tre -> Newick
@@ -346,6 +321,39 @@ or newick via calls like: `*/v1/study/pg_10/tree/ABC.nex`
 When returning slices of data in NexSON using the fine-grained access URLs, the content returned will
 simply be the requested data. The "sha", "branch2sha", and "versionHistory" properties will not be
 included. Nor will the requested data be packaged in a "data" field.
+
+
+# OLD CRUFT below here!
+
+### WIP branches
+
+We use "WIP" to stand for "Work in progress" branch. The naming convention
+for these branches are:
+
+    <curator github login>_study_<study #>_<WIP counter>
+
+So if `mtholder` has 2 WIPs for study 9, they will show up as:
+
+    mtholder_study_9_0
+    mtholder_study_9_1
+
+As discussed below, WIPs are created on a PUT. They are merged back to master and deleted
+if the master's version of the study has not advanced in the interim between
+GET and PUT. Thus, the WIPs are often very ephemeral and not 
+noticeable by the user.
+
+If the master has advanced, the WIP will be retained so that future PUT
+operations by the curator will be guaranteed to be conflict-free 
+updates somewhere in the repo. A call to `merge` will be needed to
+merge the updated content from the master into the WIP. After the
+merge (and subsequent PUTs) succeed, then the WIP should be 
+able to merge to the master branch (resulting in the deletion of the WIP).
+
+Clients of the Phylesystem API need never refer to the WIP names. All communication about
+versions happens via SHA values.
+However, they are returned in the `branch2sha` map from GET so that the 
+curation client can remind the curator of any WIPs that they have started but 
+not merged.
 
 
 ### Updating a study
