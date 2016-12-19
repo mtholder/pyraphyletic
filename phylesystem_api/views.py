@@ -39,7 +39,9 @@ _LOG = get_logger(__name__)
 # general reporting
 
 # noinspection PyUnusedLocal
+@view_config(route_name='versioned_index', renderer='json')
 @view_config(route_name='versioned_home', renderer='json')
+@view_config(route_name='index', renderer='json')
 @view_config(route_name='home', renderer='json')
 def index(request):  # pylint: disable=W0613
     """Summary info - No arguments.

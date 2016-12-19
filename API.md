@@ -29,6 +29,37 @@ for details on deployment).
 **NOTE**: Interface details for the non-public APIs are still under
 are subject to change.
 
+## Open Tree Phylesystem API Methods
+
+### Versioning in URLs:  http://domain/prefix/`v{#}`/...
+All API calls are specific to the API version, which is a part
+of the URL. This allows for new versions of the Phylesystem API to come out
+which are not backward-compatible, while allowing old clients
+to continue working with older API versions.
+Currently v3 is deployed, and for the phylesystem API many methods are unchanged from v1-v4.
+
+**NOTE**: substituting `https://devapi` for `https://api` will let you acess the more "bleeding edge" 
+deployments of the code.
+
+**NOTE**: Interface details are still under development and host names and paths are subject to change.
+
+### Resource stores in URLs:  http://domain/prefix/v#/`{resource}`/...
+Currently API is used to manage 3 types of documents: phylogenetic studies, taxonomic amendments,
+ and tree collections.
+The methods described can typically be appended to the end, after
+    the v#/`{resource}/` part of the URL.
+
+For the purposes of backward compatibility, as set of aliases are now supported for the full name
+of a resource
+
+
+| Resource | Preferred Name | Aliases |
+|----------|----------------|---------|
+| phylogenetic study | `study` | `phylesystem`, `studies` |
+| tree collections | `tree_collection` | `tree_collections`, `collections`, `collection` |
+| taxonomic amendments | `taxon_amendment` | `taxon_amendments`, `amendments`, `amendment` |
+
+
 ## Methods
 
 #### index
@@ -36,34 +67,31 @@ are subject to change.
 	curl https://api.opentreeoflife.org/phylesystem/v3/index
 
 will return a JSON object with `documentation_url`, `description`, and
-`source_url` keys describing the service.
+`source_url` keys describing the service. Example response:
+
+    {
+    "description": "The Open Tree API",
+    "documentation_url": "https://github.com/OpenTreeOfLife/phylesystem-api/tree/master/docs",
+    "source_url": "https://github.com/mtholder/pyraphyletic"
+    }
+
+#### `study/list`, `amendment/list`, and `tree_collection/list`
+
+    curl https://api.opentreeoflife.org/phylesystem/v1/study/list
+
+Returns a JSON array of all of the study IDs.  Example output:
+
+    [
+    "xy_13",
+    "xy_10",
+    "zz_11",
+    "zz_112"
+    ]
+
 
 # OLD CRUFT below here!
 
-## Open Tree Phylesystem API Version 1 Methods
 
-All API calls are specific to the API version, which is a part
-of the URL. This allows for new versions of the Phylesystem API to come out
-which are not backward-compatible, while allowing old clients
-to continue working with older API versions.
-
-**NOTE**: substituting `https://devapi` for `https://api` will let you acess the more "bleeding edge" 
-deployments of the code.
-
-**NOTE**: Interface details are still under development and host names and paths are subject to change.
-
-
-#### index
-
-	curl https://api.opentreeoflife.org/phylesystem/v1/index
-	
-Returns a JSON structure with some simple documentation of the service that is running.
-
-#### study_list
-
-    curl https://api.opentreeoflife.org/phylesystem/v1/study_list
-
-Returns a JSON array of all of the study IDs. 
 
 #### phylesystem_config
 

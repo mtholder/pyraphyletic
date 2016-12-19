@@ -40,6 +40,8 @@ def main(global_config, **settings):
     config.set_request_factory(request_factory)
     config.add_static_view('static', 'static', cache_max_age=3600)
     config.add_route('home', '/')
+    config.add_route('index', '/index')
+
     # Some routes need to have a API version prefix.
     # Some need a resource_type  like study, amendment, collection
     # And other need version/resource_type
@@ -63,6 +65,9 @@ def main(global_config, **settings):
     # Set up the routes that we anticipate using in v4 and above:
     config.add_route('versioned_home',
                      v_prefix + '/',
+                     request_method='GET')
+    config.add_route('versioned_index',
+                     v_prefix + '/index',
                      request_method='GET')
     config.add_route('render_markdown',
                      v_prefix + '/render_markdown',
