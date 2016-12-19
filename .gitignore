@@ -4,3 +4,4 @@ phylesystem_api.egg-info
 .coverage
 shards
 server-pid.txt
+travisshards
