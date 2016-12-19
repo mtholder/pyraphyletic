@@ -62,7 +62,7 @@ of a resource
 
 ## Methods
 
-#### index
+#### index: `index`
 
 	curl https://api.opentreeoflife.org/phylesystem/v3/index
 
@@ -75,7 +75,7 @@ will return a JSON object with `documentation_url`, `description`, and
     "source_url": "https://github.com/mtholder/pyraphyletic"
     }
 
-#### `study/list`, `amendment/list`, and `tree_collection/list`
+#### list: `study/list`, `amendment/list`, and `tree_collection/list`
 
     curl https://api.opentreeoflife.org/phylesystem/v1/study/list
 
@@ -91,7 +91,7 @@ Returns a JSON array of all of the study IDs.  Example output:
 Deprecated URL: `http://{domain}/phylesystem/v1/study_list`
 
 
-#### `study/config`, `amendment/config`, and `tree_collection/config`
+#### config: `study/config`, `amendment/config`, and `tree_collection/config`
 
     curl https://api.opentreeoflife.org/phylesystem/v3/study/config
 
