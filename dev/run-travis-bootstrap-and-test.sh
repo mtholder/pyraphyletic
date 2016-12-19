@@ -39,5 +39,5 @@ git config --global user.name "Your Name" || exit
 
 pserve -v development.ini &
 serverpid=`echo $!`
-bash full_dev_check.sh || exit
+bash dev/full_dev_check.sh || exit
 kill $serverpid
