@@ -3,6 +3,8 @@ set -x
 virtualenv travisenv || exit
 source travisenv/bin/activate || exit
 
+currd="$PWD"
+cd .. || exit
 git clone https://github.com/mtholder/peyotl.git || exit
 cd peyotl || exit
 git checkout pyr-only || exit
@@ -15,7 +17,9 @@ cd germinator || exit
 git checkout pyraphyletic || exit
 cd ws-tests
 export PYTHONPATH="${PYTHONPATH}:${PWD}"
-cd ../..
+
+cd "${currd}"
+
 
 pip install -r requirements.txt || exit
 pip install -r devrequirements.txt || exit
