@@ -7,11 +7,13 @@ The functions starting with `check_...` are called with UnitTest.TestCase instan
 arg and the response. These functions are used within the unit tests in this file, but also
 in the `ws-tests` calls that perform the tests through http.
 """
-import unittest
 import os
+import unittest
 
 from pyramid import testing
-from phylesystem_api.utility import fill_app_settings
+
+from phylesystem_api.utility import fill_app_settings, umbrella_from_request
+from phylesystem_api.views import import_nexson_from_crossref_metadata
 
 
 def get_app_settings_for_testing(settings):
@@ -97,6 +99,7 @@ render_test_input = 'hi from <a href="http://phylo.bio.ku.edu" target="new">' \
 
 class ViewTests(unittest.TestCase):
     """UnitTest of the functions that underlie the ws views."""
+
     def setUp(self):
         """Calls pyramid testing.setUp"""
         self.config = testing.setUp()
@@ -167,6 +170,18 @@ class ViewTests(unittest.TestCase):
         from phylesystem_api.views import push_failure
         pf = push_failure(request)
         check_push_failure_response(self, pf)
+
+    def test_doi_import(self):
+        """Make sure that fetching from DOI generates a valid study shell."""
+        doi = "10.3732/ajb.0800060"
+        document = import_nexson_from_crossref_metadata(doi=doi,
+                                                        ref_string=None,
+                                                        include_cc0=None)
+        request = gen_versioned_dummy_request()
+        request.matchdict['resource_type'] = 'study'
+        umbrella = umbrella_from_request(request)
+        errors = umbrella.validate_and_convert_doc(document, {})[1]
+        self.assertEquals(len(errors), 0)
 
 
 if __name__ == '__main__':
