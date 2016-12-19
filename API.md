@@ -31,7 +31,7 @@ are subject to change.
 
 ## Open Tree Phylesystem API Methods
 
-### Versioning in URLs:  http://domain/prefix/`v{#}`/...
+### Versioning in URLs:  http://{domain}/phylesystem/`v{#}`/...
 All API calls are specific to the API version, which is a part
 of the URL. This allows for new versions of the Phylesystem API to come out
 which are not backward-compatible, while allowing old clients
@@ -43,7 +43,7 @@ deployments of the code.
 
 **NOTE**: Interface details are still under development and host names and paths are subject to change.
 
-### Resource stores in URLs:  http://domain/prefix/v#/`{resource}`/...
+### Resource stores in URLs:  http://{domain}/phylesystem/v#/`{resource}`/...
 Currently API is used to manage 3 types of documents: phylogenetic studies, taxonomic amendments,
  and tree collections.
 The methods described can typically be appended to the end, after
@@ -88,19 +88,50 @@ Returns a JSON array of all of the study IDs.  Example output:
     "zz_112"
     ]
 
-
-# OLD CRUFT below here!
-
+Deprecated URL: `http://{domain}/phylesystem/v1/study_list`
 
 
-#### phylesystem_config
+#### `study/config`, `amendment/config`, and `tree_collection/config`
 
-    curl https://api.opentreeoflife.org/phylesystem/v1/phylesystem_config
+    curl https://api.opentreeoflife.org/phylesystem/v3/study/config
 
 Returns a JSON object with information about how the phylesystem doc store is 
-configured. Including information about what sets of ID aliases map to the same
-study. The returned struct is identical to what you get if you were to call
+configured.
+
+Also returns a list of all of the doc IDs and paths in the list of "documents"
+ in each shard.
+As a deprecated feature, the description of the documents, includes information 
+on "keys" which lists the set of ID aliases map to the same study.
+We no longer support aliases for the same study, so the list of "keys" is now
+ a list of just one ID.
+The returned struct is identical to what you get if you were to call
 phylesystem.get_configuration_dict() on a local instance (using peyotl).
+
+The "initialization" key that is returned by the call should be deprecated or
+  only used by developers who want to mimic the server's form of initialization
+  to set up a similar structure. It contains a python fragment of initializing the
+  document store.
+
+    {
+    "initialization": "shard_mirror_pair_list = [['/path/mini_phyl', '/path/mirror/mini_phyl']]",
+    "number_of_shards": 1,
+    "shards": [{"document_schema": "NexsonDocSchema(schema_version=1.2.1)",
+                "documents": [{"keys": ["xy_10"],
+                               "relpath": "xy_10/xy_10/xy_10.json"
+                              }, {
+                               "keys": ["xy_13"],
+                               "relpath": "xy_13/xy_13/xy_13.json"
+                              }],
+                "name": "mini_phyl",
+                "number of documents": 2,
+                "path": "/path/mini_phyl"
+               }]
+    }
+
+
+Deprecated URL: `http://{domain}/phylesystem/v1/phylesystem_config`
+
+# OLD CRUFT below here!
 
 
 #### external_url
