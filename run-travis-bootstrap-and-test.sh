@@ -10,6 +10,13 @@ python setup.py develop || exit
 export PEYOTL_ROOT="${PWD}"
 cd ..
 
+git clone https://github.com/OpenTreeOfLife/germinator.git || exit
+cd germinator || exit
+git checkout pyraphyletic || exit
+cd ws-tests
+export PYTHONPATH="${PYTHONPATH}:${PWD}"
+cd ../..
+
 pip install -r requirements.txt || exit
 pip install -r devrequirements.txt || exit
 
