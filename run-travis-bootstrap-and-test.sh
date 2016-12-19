@@ -16,8 +16,11 @@ pip install -r devrequirements.txt || exit
 cat development.ini.example | sed -e "s:REPO_PAR:${PWD}/travisshards:" > development.ini || exit 1
 bash setup-travis-testing-repos.sh || exit 1
 
+export LOCAL_TESTING_MODE=1
+export GITHUB_OAUTH_TOKEN=bogus
 python setup.py develop || exit
 
-pserve --pid-file=server-pid.txt -v development.ini &
+pserve -v development.ini &
+serverpid=`echo $!`
 bash full_dev_check.sh || exit
-kill $(cat server-pid.txt)
+kill $serverpid
