@@ -33,6 +33,9 @@ python setup.py develop || exit
 cp ws-tests/local.test.conf ws-tests/test.conf
 cp ws-write-tests/local.test.conf ws-write-tests/test.conf
 
+# git writes in the docstores require some info
+git config --global user.email "you@example.com" || exit
+git config --global user.name "Your Name" || exit
 
 pserve -v development.ini &
 serverpid=`echo $!`
