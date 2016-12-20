@@ -211,17 +211,15 @@ Example repsonse:
     "shardName": "mini_phyl",
     "url": "http://127.0.0.1:6543/v4/study/xy_10",
     "versionHistory": [...],
-    "version_history": [
-        {
-            "author_email": "mtholder@gmail.com",
-            "author_name": "Mark T. Holder",
-            "date": "Thu, 11 Dec 2014 09:28:15 +0100",
-            "date_ISO_8601": "2014-12-11 09:28:15 +0100",
-            "id": "2d59ab892ddb3d09d4b18c91470b8c1c4cca86dc",
-            "message_subject": "making the structure of this repo more like the otol phylesystem repo. forgot about the middle layer",
-            "relative_date": "2 years ago"
-        }
-    ]
+    "version_history": [{
+        "author_email": "mtholder@gmail.com",
+        "author_name": "Mark T. Holder",
+        "date": "Thu, 11 Dec 2014 09:28:15 +0100",
+        "date_ISO_8601": "2014-12-11 09:28:15 +0100",
+        "id": "2d59ab892ddb3d09d4b18c91470b8c1c4cca86dc",
+        "message_subject": "making the structure of this repo more like the otol phylesystem repo. forgot about the middle layer",
+        "relative_date": "2 years ago"
+        }, ...]
     }
 
 The keys of the response:
@@ -428,6 +426,18 @@ POST fall into 2 general categories:
         in the metadata.
 
 ## Miscellaneous methods
+#### Check push failure state: `v{#}/{resource}/push_failure`
+
+     curl https://api.opentreeoflife.org/phylesystem/v3/study/push_failure
+
+response:
+
+    {
+        "doc_type": "study",
+        "errors": [],
+        "pushes_succeeding": true
+    }
+
 #### render_markdown: `v{#}/render_markdown`
 
      curl -H "Content-Type: application/json" -X POST https://api.opentreeoflife.org/phylesystem/render_markdown -d '{"src":"hi `there`"}
@@ -435,6 +445,44 @@ POST fall into 2 general categories:
 response:
 
     <p>hi &lt;code&gt;there&lt;/code&gt;</p>
+    
+#### trees_in_synth: `v{#}/trees_in_synth`
+Creates a collection of all of the trees queued to be included in synthesis:
+
+    curl https://api.opentreeoflife.org/phylesystem/v3/trees_in_synth
+
+response:
+
+    {
+        "contributors": [{"login": "blah", "name":"Blah D. Blah"},...]
+        "creator": {"login": "", "name": ""},
+        "decisions": [{
+            "SHA": "",
+            "comments": "",
+            "decision": "INCLUDED",
+            "name": "Bayesian 18S Chlorophyceae (S. Watanabe, 2016)",
+            "studyID": "ot_752",
+            "treeID": "tree1"
+            }, ...]
+        "description": "",
+        "name": "",
+        "queries": [],
+        "url": ""
+    }
+
+#### append at tree in the default synth collection: `v{#}/include_tree_in_synth`
+Takes `tree_id` and `study_id` IDs.  If the tree is not included in any of the collections
+that are currently used in the Open Tree of Life's synthesis procedure.
+Returns the result of a `trees_in_synth`.
+
+`auth_info` is required.
+
+#### Remove a tree in the default synth collection: `v{#}/exclude_tree_in_synth`
+Takes `tree_id` and `study_id` IDs.  Removes any occurrence of that study+tree pair
+from a collection that is currently used by the Open Tree of Life's synthesis procedure.
+Returns the result of a `trees_in_synth`.
+
+`auth_info` is required.
 
 ## Authors
 
