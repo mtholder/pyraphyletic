@@ -86,7 +86,7 @@ def main(global_config, **settings):
                      request_method='GET')
     config.add_route('generic_push',
                      v_rt_prefix + '/push',
-                     request_method='GET')
+                     request_method='PUT')
     config.add_route('generic_push_failure',
                      v_rt_prefix + '/push_failure',
                      request_method='GET')
@@ -156,13 +156,13 @@ def main(global_config, **settings):
                      request_method='OPTIONS')
     # push methods need the doc id (oddly enough)
     config.add_route('push_study_via_id',
-                     v_prefix + '/push/study/' + study_id_frag,
+                     v_prefix + '/study/push/' + study_id_frag,
                      request_method='PUT')
     config.add_route('push_taxon_amendment_via_id',
-                     v_prefix + '/push/amendment/' + amendment_id_frag,
+                     v_prefix + '/amendment/push/' + amendment_id_frag,
                      request_method='PUT')
     config.add_route('push_tree_collection_via_id',
-                     v_prefix + '/push/collection/' + collection_id_frag,
+                     v_prefix + '/collection/push/' + collection_id_frag,
                      request_method='PUT')
     # Methods pertaining to the set of trees currently in synth
     config.add_route('trees_in_synth',

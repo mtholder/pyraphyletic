@@ -322,53 +322,6 @@ When returning slices of data in NexSON using the fine-grained access URLs, the 
 simply be the requested data. The "sha", "branch2sha", and "versionHistory" properties will not be
 included. Nor will the requested data be packaged in a "data" field.
 
-
-# OLD CRUFT below here!
-
-### WIP branches
-
-We use "WIP" to stand for "Work in progress" branch. The naming convention
-for these branches are:
-
-    <curator github login>_study_<study #>_<WIP counter>
-
-So if `mtholder` has 2 WIPs for study 9, they will show up as:
-
-    mtholder_study_9_0
-    mtholder_study_9_1
-
-As discussed below, WIPs are created on a PUT. They are merged back to master and deleted
-if the master's version of the study has not advanced in the interim between
-GET and PUT. Thus, the WIPs are often very ephemeral and not 
-noticeable by the user.
-
-If the master has advanced, the WIP will be retained so that future PUT
-operations by the curator will be guaranteed to be conflict-free 
-updates somewhere in the repo. A call to `merge` will be needed to
-merge the updated content from the master into the WIP. After the
-merge (and subsequent PUTs) succeed, then the WIP should be 
-able to merge to the master branch (resulting in the deletion of the WIP).
-
-Clients of the Phylesystem API need never refer to the WIP names. All communication about
-versions happens via SHA values.
-However, they are returned in the `branch2sha` map from GET so that the 
-curation client can remind the curator of any WIPs that they have started but 
-not merged.
-
-
-### Updating a study
-
-If you want to update a study, for example study = ot_10, with a file called
-`10-modified.json`, use the following PUT command:
-
-    curl -X PUT https://api.opentreeoflife.org/phylesystem/v1/study/ot_10.json?auth_token=$GITHUB_OAUTH_TOKEN\
-    &starting_commit_SHA=e13343535837229ced29d44bdafad2465e1d13d8 --data-urlencode nexson@10-modified.json
-
-(Note the escaped '&'). For large studies, it's faster to skip the URL-encoding and pass the NexSON data as binary:
-
-    curl -X PUT 'https://api.opentreeoflife.org/phylesystem/v1/study/ot_10?auth_token=26b5a59d2cbc921bdfe04ec0e9f6cc05c879a761'\
-    &starting_commit_SHA=e13343535837229ced29d44bdafad2465e1d13d8 --data-binary @10-modified.json --compressed
-
 #### PUT arguments
 
 **Required arguments**
@@ -438,39 +391,7 @@ will be denied and an HTTP error code 400 will be returned.
 
 [Here](https://github.com/OpenTreeOfLife/phylesystem-1/commit/c3312d2cbb7fc608a62c0f7de177305fdd8a2d1a) is an example commit created by the OpenTree API.
 
-### Merge a study in a WIP branch
 
-Merges to master are done automatically on PUTs when the version of the study on master has 
-not moved forward from the version in the parent commit.
-The MERGE controller merges master into outstanding WIP branch.
-The merged output should be vetted by a curator, because the
-merge can generate semantic conflicts even if not git (textual) conflicts arise.
-
-To merge a study from master into a branch with a given `starting_commit_sha`
-
-    curl -X POST https://api.opentreeoflife.org/phylesystem/v1/merge/?resource_id=9&starting_commit_SHA=152316261261342&auth_token=$GITHUB_OAUTH_TOKEN
-
-
-If the request is successful, a JSON response similar to this will be returned:
-
-        {
-            "error": 0,
-            "branch_name": "my_user_9_2",
-            "description": "Updated branch",
-            "sha": "dcab222749c9185797645378d0bda08d598f81e7",
-            "merged_SHA": "16463623459987070600ab2757540c06ddepa608",
-        }
-
-`merged_SHA` must be included in the next PUT for this study (unless you are 
-happy with your work languishing on a WIP branch instead of master).
-
-If there is an error, an HTTP 400 error will be returned with a JSON response similar 
-to this:
-
-        {
-            "error": 1,
-            "description": "Could not merge master into WIP! Details: ..."
-        }
 
 ### Creating a new study
 
@@ -482,8 +403,8 @@ This will generate the output
 
     {
         "error": "0",
-        "resource_id": "12",
-        "branch_name": "usr_study_12_0",
+        "resource_id": "ot_12",
+        "branch_name": "master",
         "description": "Updated study 12",
         "sha":  "e13343535837229ced29d44bdafad2465e1d13d8",
         "merge_needed": false
@@ -492,261 +413,28 @@ This will generate the output
 See the PUT response for an explanation of the output.
 For a new study merge_needed should always be `false`
 
-POSTS fall into 2 general categories:
-  1. With a study ID. These take the same arguments as a PUT, and are only to be used
-        if a study is being added to the doc store, and it is known that it already
-        has a valid, namespaced ID in another curation tool (such as phylografter).
-        See the PUT documentation for the arguments.
-  2. Studies without an ID:
-     * import_from_location can be "IMPORT_FROM_UPLOAD" or some other string
-     * cc0_agreement is checked if import_from_location="IMPORT_FROM_UPLOAD",
-            if cc0_agreement is the 'true', then CC0 deposition will be noted
-            in the metadata.
-     * publication_reference', '')
-     * import_method can be:
-        * import-method-TREEBASE_ID should be used with treebase_id argument
-        * import-method-NEXML should be used with nexml_fetch_url OR
-                with nexml_pasted_string argument
-        * import-method-PUBLICATION_DOI should be used with publication_DOI argument
-        * import-method-PUBLICATION_REFERENCE' should be used with
-                publication_reference argument
+POST fall into 2 general categories:
+ * `import_from_location="import-method-POST"` to use the body of the POST
+    to create a new study
+ * `import_from_location="import-method-TREEBASE_ID"` should be used with 
+    `treebase_id` argument
+ * `import_from_location="import-method-PUBLICATION_DOI"` should be used with 
+    `publication_DOI` argument
+ * `import_from_location="import-method-PUBLICATION_REFERENCE"` should be used with
+    `publication_reference` argument
+ * Any other value of `import_from_location` parameter will result in an empty
+    study being created If `cc0_agreement` is checked if 
+        if cc0_agreement is the 'true', then CC0 deposition will be noted
+        in the metadata.
 
-### Pushing the master branch to Github
-IN FLUX!
+## Miscellaneous methods
+#### render_markdown: `v{#}/render_markdown`
 
-This API method will push the master branch of the local Git repo
-to the master on GitHub
+     curl -H "Content-Type: application/json" -X POST https://api.opentreeoflife.org/phylesystem/render_markdown -d '{"src":"hi `there`"}
 
-    curl -X PUT https://api.opentreeoflife.org/phylesystem/v1/push/9
+response:
 
-On success, it will return JSON similar to this:
-
-    {
-        "description": "Push succeeded",
-        "error": 0
-    }
-
-If there is an error in syncing the local git repository with the remote, an HTTP 409 (conflict) error code will be returned with a JSON response of the form:
-
-    {
-        "error": 1,
-        "description": "Could not push! Details: ..."
-    }
-
-where the description will contain a stacktrace.
-
-
-### Using different author information
-
-By default, the Phylesystem API uses the name and email associated with the Github Oauth token to assign provenance to API calls. To over-ride that you can provide ```author_name``` and ```author_email``` arguments:
-
-    curl -X PUT 'https://api.opentreeoflife.org/phylesystem/v1/study/13.json?auth_token=$GITHUB_OAUTH_TOKEN&author_name=joe&author_email=joe@joe.com' --data-urlencode nexson@1003.json
-
-## Not Yet Implemented Methods
-
-The following methods have not been implemented yet.
-
-### Searching, filtering, sorting, paginating studies
-
-    # Add searching, sorting, pagination, filters on the query string
-    curl https://api.opentreeoflife.org/phylesystem/v1/studies?q=mammal&sort=status,-date&page=3&filter=state-draft
-
-### Listing your own studies (as a curator), sorted by status
-
-This is the default __dashboard__ view for a logged-in curator. Of course it's
-just a special case of the filtered list above.
-
-    # the curator's "dashboard" is just a preset filter
-    curl https://api.opentreeoflife.org/phylesystem/v1/studies?q=jimallman&sort=-status,-date&page=1&filter=state-draft
-
-This and other "canned" views might have friendlier URLs:
-
-    curl https://api.opentreeoflife.org/phylesystem/v1/studies/dashboard
-
-    curl https://api.opentreeoflife.org/phylesystem/v1/studies/draft
-
-    curl https://api.opentreeoflife.org/phylesystem/v1/studies/published
-
-    curl https://api.opentreeoflife.org/phylesystem/v1/studies/latest
-
-
-### Incorporating "namespaced" study identifiers from different sources
-
-We need to avoid collisions between studies created in phylografter, the
-Open Tree web curation tool, and other tools. Rather than keeping a global
-counter or using GUIDs, we're planning to use a prefix for tool or system
-that contributes Nexson studies to the repository.
-
-The prefixes currently planned include:
-- __ot__ for the [Open Tree curation tool](https://tree.opentreeoflife.org/curator/study)
-- __pg__ for [phylografter](http://reelab.net/phylografter/)
-
-
-These "namespaces" will appear in different forms, depending on context: 
-
-- as CURIEs in NexSON or NeXML
-
-    ```
-    'nexml': { "@id": "ot:123", ... }
-    ```
-    ```
-    <nexml id="pg:987" ... >
-    ```
-
-- as folders in the datastore (filesystem or git repo)
-
-    ```
-    ot/123.json
-    pg/987.json
-    ```
-
-- as subpaths in RESTful URLs
-
-    ```
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree
-    https://api/phylesystem/v1/study/pg/987/tree
-    ```
-    
-- as elements of WIP branch names (in a branching repo)
-
-    ```
-    jimallman_study_ot_123
-    leto_study_pg_987
-    ```
-
-See related discussion in https://github.com/OpenTreeOfLife/api.opentreeoflife.org/issues/44
-
-### Creating, fetching, updating subresources (not yet implemented)
-
-We should be able to extend the RESTful style used for studies to manage
-"subresources" (__trees__, __nodes__, __OTUs__?) within a study.  Where possible, this
-would provide a uniform set of CRUD (create, retrieve, update,
-delete) operations using URLs like:
-
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree/5
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree/5/node/789
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/otu/456
-
-Apart from normal elements in NexSON, we might also consider using this
-convention for __supporting files__ and __annotations__ :
-
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/file/3
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/file/alignment_data.xsl
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/annotation/456
-
-Ideally, it would be good to also allow fetching (and more?) of sets of
-related objects:
-
-- contiguous __ranges__ of objects
-- non-contiguous __sets__ of objects
-- arbitrary sets of __mixed types__?
-
-Here are some possible examples:
-
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree/1...4
-    https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree/1,5,8
-
-The last case (arbitrary setes of mixed types) might include the cluster of
-elements needed for a complex annotation. This would probably be handled
-best in a more general diff/patch solution, probably in RPC style rather
-than REST. Or as a choreographed series of RESTful operations on the
-individual elements, as shown above.
-
-See related discussion in https://github.com/OpenTreeOfLife/api.opentreeoflife.org/issues/4, https://github.com/OpenTreeOfLife/api.opentreeoflife.org/issues/32
-
-### NexSON fragments and decomposition
-
-It can be beneficial to load entire studies in memory, esp. to manage
-integrity and relationships among study elements. Still, this can be
-difficult when managing large NexSON documents, due to limitations in
-working storage and network speed. Also, some operations can be applied
-cleanly to parts of the whole, e.g., reading and manipulating a single
-tree. 
-
-We have considered a simple, general model for "decomposing" NexSON into
-fragments, while ensuring that these can be reassembled exactly as before. This
-might be as simple as removing an element (say, a tree) and replacing it with a
-token that identifies this element in context. For example, here's a study:
-    
-    http://api.opentreeoflife.org/phylesystem/v1/study/ot/123
-
-    ...
-    "trees": {
-        "@id": "trees10", 
-        "@otus": "otus10", 
-        "tree": [
-            {
-                "@id": "tree1", 
-                "@label": "Untitled (#tree1)", 
-                "edge": [
-                ...
-            }, 
-            {
-                "@id": "tree3", 
-                "@label": "Untitled (#tree3)", 
-                "edge": [
-                ...
-            }, 
-    
-Upon request, we might extract its first tree (_tree1_) as a fragment:
-
-    http://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree/1
-
-    {
-        "@id": "tree1", 
-        "@label": "Untitled (#tree1)", 
-        "edge": [
-        ...
-    } 
-
-We can either use the URL to replace this element in an update, or we can leave a placeholder:
-
-    http://api.opentreeoflife.org/phylesystem/v1/study/ot/123
-
-    ...
-    "trees": {
-        "@id": "trees10", 
-        "@otus": "otus10", 
-        "tree": [
-            {
-                "@PLACEHOLDER": true, 
-                "@type": "object", 
-                "@href": "https://api.opentreeoflife.org/phylesystem/v1/study/ot/123/tree/1" 
-            }, 
-            {
-                "@id": "tree3", 
-                "@label": "Untitled (#tree3)", 
-                "edge": [
-                ...
-            }, 
-
-Placeholders like this should support loading a large NexSON document
-"piecemeal" from a local or remote source, replacing placeholders with full
-content as it arrives. 
-
-Ideally these fragments could include ranges or sets
-of elements, as described above. This would address known performance
-challenges like large studies with "flat" collections (eg, tens of
-thousands of OTUs in an array).
-
-    http://api.opentreeoflife.org/phylesystem/v1/study/pg/987
-
-    ...
-    "otus": {
-        "@id": "otus10", 
-        "otu": [
-            {
-                "@PLACEHOLDER": true, 
-                "@type": "range", 
-                "@href": "https://api.opentreeoflife.org/phylesystem/v1/study/pg/987/otu/1...1000" 
-            }, 
-            {
-                "@PLACEHOLDER": true, 
-                "@type": "range", 
-                "@href": "https://api.opentreeoflife.org/phylesystem/v1/study/pg/987/otu/1001...2000" 
-            }, 
-            ...
+    <p>hi &lt;code&gt;there&lt;/code&gt;</p>
 
 ## Authors
 

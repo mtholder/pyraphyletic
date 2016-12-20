@@ -121,7 +121,7 @@ def push_collection_document(request):
     return push_document(request)
 
 
-@view_config(route_name='generic_push', renderer='json')
+@view_config(route_name='generic_push', renderer='json', request_method="PUT")
 def generic_push(request, doc_id=None):
     """Core function that pushes of a shard to GitHub and updates the internal push_failure state.
 
