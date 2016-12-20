@@ -178,7 +178,8 @@ def main(global_config, **settings):
     # TODO add routes to be deprecated once our tools rely only on the generic forms
     config.add_route('study_list', v_prefix + '/study_list')
     config.add_route('phylesystem_config', v_prefix + '/phylesystem_config')
-    config.add_route('study_external_url', 'external_url/{study_id}')
+    config.add_route('study_external_url', v_prefix + '/external_url/{study_id}')
+    config.add_route('unversioned_study_external_url', 'external_url/{study_id}')
     config.add_route('amendment_list', v_prefix + '/amendments/amendment_list')
     # The next 2 methods are really fetch all+last commit
     config.add_route('fetch_all_amendments', v_prefix + '/amendments/list_all')

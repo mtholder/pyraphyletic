@@ -214,6 +214,7 @@ def external_url(request):
 
 # TODO: deprecate in favor of generic_external_url
 @view_config(route_name='study_external_url', renderer='json')
+@view_config(route_name='unversioned_study_external_url', renderer='json')
 def study_external_url(request):
     """Old study-specific view of `external_url_generic_helper` that uses "study_id" as a key."""
     phylesystem = get_phylesystem_doc_store(request)
