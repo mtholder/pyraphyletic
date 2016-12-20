@@ -403,12 +403,12 @@ If branch can be merged to master, it will be and the branch will be deleted.
 On success, it will return a JSON response similar to this:
 
     {
-        "error": "0",
-        "resource_id": "12",
-        "branch_name": "usr_study_12_0",
+        "error": 0,
+        "resource_id": "pg_12",
+        "branch_name": "master",
         "description": "Updated study 12",
         "sha":  "e13343535837229ced29d44bdafad2465e1d13d8",
-        "merge_needed": true,
+        "merge_needed": false,
     }
 
 
