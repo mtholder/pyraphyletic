@@ -475,7 +475,7 @@ class GitPushJob(object):
             self.umbrella.push_doc_to_remote('GitHubRemote', self.doc_id)
             self.push_success = True
         except:
-            _LOG.exception( "push failure exception:")
+            _LOG.exception("push failure exception:")
             m = traceback.format_exc()
             msg = "Could not push {i} ! Details: {m}".format(i=self.doc_id, m=m)
             try:
